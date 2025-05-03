@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+build
+FTXUI
+.cache/clangd/index
