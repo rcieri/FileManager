@@ -39,6 +39,11 @@ class FileManager {
                 std::system(cmd.c_str());
                 to_edit.reset();   // Clear the edit target
                 refresh_entries(); // In case the file was renamed/edited
+            } else if (to_open) {
+                std::string cmd = "start /B explorer.exe \"" + *to_open + "\"";
+                std::system(cmd.c_str());
+                to_open.reset();
+                // refresh_entries();
             } else {
                 break; // User pressed 'q' or exited without edit
             }
@@ -47,9 +52,9 @@ class FileManager {
     }
 
   private:
-    enum class Modal { None, Rename, Move, Delete } modal = Modal::None;
+    enum class Modal { None, Rename, Move, Delete, Error } modal = Modal::None;
     fs::path modal_target;
-    std::string modal_input;
+    std::string modal_input, error_message;
     Component input_box, btn_ok, btn_cancel, modal_container;
 
     fs::path root_path;
@@ -62,6 +67,7 @@ class FileManager {
     size_t selected_index = 0;
     bool show_help = false;
     std::optional<std::string> to_edit;
+    std::optional<std::string> to_open;
 
     void refresh_entries() {
         visible_entries.clear();
@@ -71,11 +77,26 @@ class FileManager {
     }
 
     void build_tree(const fs::path &path, int depth) {
+        if (modal == Modal::Error) {
+            modal = Modal::None;
+        }
+
         if (!fs::exists(path) || !fs::is_directory(path))
             return;
+
         std::vector<fs::directory_entry> children;
-        for (auto &e : fs::directory_iterator(path))
-            children.push_back(e);
+        try {
+            for (auto &e : fs::directory_iterator(path)) {
+                children.push_back(e);
+            }
+        } catch (const fs::filesystem_error &e) {
+            // Log the error but continue
+            error_message = std::string(e.what()) + " (" + path.string() + ")";
+            modal = Modal::Error;
+            expanded_dirs.erase(modal_target);
+            return; // Skip this directory and continue with others
+        }
+
         std::sort(children.begin(), children.end(), [](auto const &a, auto const &b) {
             return a.path().filename().string() < b.path().filename().string();
         });
@@ -87,21 +108,30 @@ class FileManager {
     }
 
     void handle_event(Event event, ScreenInteractive &screen) {
-        if (modal != Modal::None) {
+        if (modal != Modal::None && modal != Modal::Error) {
             handle_modal_event(event);
             return;
+        } else if (modal == Modal::Error) {
+            error_message.clear();
+            modal = Modal::None; // Reset the modal to None
         }
 
         if (event == Event::Character("j")) {
-            move_selection_down();
+            move_selection_down(1);
         } else if (event == Event::Character("k")) {
-            move_selection_up();
+            move_selection_up(1);
+        } else if (event == Event::Character("J")) {
+            move_selection_down(4);
+        } else if (event == Event::Character("K")) {
+            move_selection_up(4);
         } else if (event == Event::Character("h")) {
             go_to_parent_directory();
         } else if (event == Event::Character("l")) {
             open_directory();
         } else if (event == Event::Character("e")) {
             edit_file(screen);
+        } else if (event == Event::Character("o")) {
+            open_file(screen);
         } else if (event == Event::Character("q")) {
             quit_program(screen);
         } else if (event == Event::Character("?")) {
@@ -122,16 +152,18 @@ class FileManager {
     void handle_modal_event(Event event) {
         if (event == Event::Return) {
             on_modal_ok();
-        } else if (event == Event::Escape) {
+        } else if (event == Event::Escape && modal != Modal::Error) {
             modal = Modal::None;
         } else {
             modal_container->OnEvent(event);
         }
     }
-    void move_selection_down() { selected_index = (selected_index + 1) % visible_entries.size(); }
+    void move_selection_down(int levels) {
+        selected_index = (selected_index + levels) % visible_entries.size();
+    }
 
-    void move_selection_up() {
-        selected_index = selected_index == 0 ? visible_entries.size() - 1 : selected_index - 1;
+    void move_selection_up(int levels) {
+        selected_index = selected_index == 0 ? visible_entries.size() - 1 : selected_index - levels;
     }
 
     void go_to_parent_directory() {
@@ -151,6 +183,11 @@ class FileManager {
 
     void edit_file(ScreenInteractive &screen) {
         to_edit = visible_entries[selected_index].path.string();
+        screen.ExitLoopClosure()();
+    }
+
+    void open_file(ScreenInteractive &screen) {
+        to_open = visible_entries[selected_index].path.string();
         screen.ExitLoopClosure()();
     }
 
@@ -195,6 +232,14 @@ class FileManager {
     }
 
     Element render() {
+        if (modal == Modal::Error) {
+            auto error_message_element = text(error_message) | bold | color(Color::Red);
+            auto title = text("Error") | bold | color(Color::Red);
+            modal = Modal::None;
+            return window(title, error_message_element) | size(HEIGHT, LESS_THAN, 15) | center |
+                   color(Color::Red);
+        }
+
         if (show_help) {
             return window(vbox({text("Help - FileManager") | bold | center, separator(),
                                 text("j/k: Navigate up/down"), text("Enter: Expand/Collapse"),
@@ -261,29 +306,26 @@ class FileManager {
     }
 
     void on_modal_ok() {
-        try {
-            switch (modal) {
-            case Modal::Rename:
-                fs::rename(modal_target, modal_target.parent_path() / modal_input);
-                break;
-            case Modal::Move:
-                fs::rename(modal_target, fs::path(modal_input) / modal_target.filename());
-                break;
-            case Modal::Delete:
-                if (fs::is_directory(modal_target))
-                    fs::remove_all(modal_target);
-                else
-                    fs::remove(modal_target);
-                break;
-            default:
-                break; // If modal is None or any other undefined state
-            }
-        } catch (const std::exception &) {
-            // TODO: capture error for UI feedback
+        switch (modal) {
+        case Modal::Rename:
+            fs::rename(modal_target, modal_target.parent_path() / modal_input);
+            break;
+        case Modal::Move:
+            fs::rename(modal_target, fs::path(modal_input) / modal_target.filename());
+            break;
+        case Modal::Delete:
+            if (fs::is_directory(modal_target))
+                fs::remove_all(modal_target);
+            else
+                fs::remove(modal_target);
+            break;
+        default:
+            break; // If modal is None or any other undefined state
         }
         modal = Modal::None;
         refresh_entries();
     }
+
     std::string file_icon(const fs::path &p) {
         auto ext = p.extension().string();
         if (ext == ".cpp" || ext == ".h" || ext == ".c")
