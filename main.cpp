@@ -21,9 +21,7 @@ class FileManager {
 
         // Modal UI components
         input_box = Input(&modal_input, "");
-        btn_ok = Button(" <Enter> to accept ", [&] { on_modal_ok(); });
-        btn_cancel = Button("<Esc> to cancel", [&] { modal = Modal::None; });
-        modal_container = Container::Vertical({input_box, btn_ok, btn_cancel});
+        modal_container = Container::Vertical({input_box});
     }
 
     int Run() {
@@ -239,32 +237,26 @@ class FileManager {
                 title = "Confirm delete?";
 
             // Title with bold white text, increased size for prominence (no dimming)
-            auto prompt = text(title) | bold | color(Color::White);
+            auto prompt = text(title) | bold | color(Color::White) | bgcolor(Color::Black);
+            auto sep = separator() | bgcolor(Color::Black);
 
-            Element body;
+            // Declare body before using it
+            ftxui::Element body;
+
             if (modal == Modal::Delete) {
-                // Styled delete confirmation text in red (no dimming)
-                body = hbox({text("Delete ") | bold | bgcolor(Color::Red),
+                body = hbox(
+                    Elements{text("Delete ") | bold | bgcolor(Color::Red),
                              text(modal_target.filename().string()) | bold | bgcolor(Color::Red)});
             } else {
-                // Normal input box rendering (no dimming)
                 body = input_box->Render();
             }
 
-            // Styled buttons with white text, some padding, and border (no dimming)
-            auto button_style = bgcolor(Color::BlueLight) | borderRounded;
-            auto buttons = hbox({btn_ok->Render() | button_style | flex,
-                                 btn_cancel->Render() | button_style | flex}) |
-                           center;
+            auto box_content = vbox(Elements{prompt, sep, body});
+            auto box = window(text(""), box_content) | bgcolor(Color::Black) |
+                       size(WIDTH, EQUAL, 50) | size(HEIGHT, LESS_THAN, 15) | center;
 
-            // Styling the modal box with a soft background, rounded corners, and spacing between
-            // elements (no dimming)
-            auto box = vbox({prompt, separator(), body, buttons}) | border | center | borderRounded;
-
-            // Return the modal with backdrop and modal content (only backdrop dimmed)
-            return dbox({backdrop, box});
+            return dbox(Elements{backdrop, box});
         }
-
         return main_view;
     }
 
