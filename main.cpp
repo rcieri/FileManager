@@ -157,6 +157,8 @@ class FileManager {
             prompt_move();
         } else if (event == Event::Character("d")) {
             prompt_delete();
+        } else if (event == Event::Character("c")) {
+            print_selected_path_and_exit(screen);
         } else if (event == Event::Return) {
             toggle_directory_expansion();
         }
@@ -187,10 +189,12 @@ class FileManager {
     }
 
     void open_directory() {
-        auto sel = visible_entries[selected_index].path;
-        if (fs::is_directory(sel)) {
-            root_path = sel;
-            refresh_entries();
+        for (const auto &entry : fs::directory_iterator(root_path)) {
+            if (fs::is_directory(entry)) {
+                root_path = entry.path();
+                refresh_entries();
+                return;
+            }
         }
     }
 
@@ -205,6 +209,12 @@ class FileManager {
     }
 
     void quit_program(ScreenInteractive &screen) { screen.ExitLoopClosure()(); }
+
+    void print_selected_path_and_exit(ScreenInteractive &screen) {
+        auto selected = visible_entries[selected_index].path;
+        std::cout << selected << std::endl; // Print the full path to stdout
+        screen.ExitLoopClosure()();         // Exit the program after printing
+    }
 
     void toggle_help() { show_help = !show_help; }
 
@@ -253,6 +263,9 @@ class FileManager {
                    color(Color::Red);
         }
 
+        auto cwd_line =
+            text("Current Directory: " + root_path.string()) | bold | color(Color::Yellow);
+
         if (show_help) {
             return window(vbox({text("Help - FileManager") | bold | center, separator(),
                                 text("j/k: Navigate up/down"), text("Enter: Expand/Collapse"),
@@ -280,7 +293,7 @@ class FileManager {
             lines.push_back(line);
         }
 
-        auto main_view = vbox({vbox(lines) | border});
+        auto main_view = vbox({cwd_line, vbox(lines) | border});
 
         if (modal != Modal::None) {
             // Apply the dim effect only to the backdrop
