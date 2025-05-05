@@ -97,9 +97,22 @@ class FileManager {
             return; // Skip this directory and continue with others
         }
 
-        std::sort(children.begin(), children.end(), [](auto const &a, auto const &b) {
-            return a.path().filename().string() < b.path().filename().string();
+        std::sort(children.begin(), children.end(), [](const auto &a, const auto &b) {
+            bool a_is_dir = fs::is_directory(a);
+            bool b_is_dir = fs::is_directory(b);
+
+            if (a_is_dir != b_is_dir)
+                return a_is_dir > b_is_dir; // directories before files
+
+            std::string a_name = a.path().filename().string();
+            std::string b_name = b.path().filename().string();
+
+            std::transform(a_name.begin(), a_name.end(), a_name.begin(), ::tolower);
+            std::transform(b_name.begin(), b_name.end(), b_name.begin(), ::tolower);
+
+            return a_name < b_name;
         });
+
         for (auto &e : children) {
             visible_entries.push_back({e.path(), depth});
             if (fs::is_directory(e.path()) && expanded_dirs.count(e.path()))
