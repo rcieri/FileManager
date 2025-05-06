@@ -40,6 +40,9 @@ class FileManager {
             } else if (to_open) {
                 std::system(("start /B explorer.exe \"" + *to_open + "\"").c_str());
                 to_open.reset();
+            } else if (to_change_dir) {
+                std::cout << visible_entries[selected_index].path << std::endl;
+                break;
             } else {
                 break;
             }
@@ -63,6 +66,8 @@ class FileManager {
     size_t selected_index = 0;
     bool show_help = false;
     std::optional<std::string> to_edit, to_open;
+    bool to_change_dir = false;
+    bool to_quit = false;
 
     // Clipboard for copy/cut
     std::optional<fs::path> clipboard_path;
@@ -268,6 +273,7 @@ class FileManager {
 
     void quit(ScreenInteractive &s) {
         try {
+            to_quit = true;
             s.ExitLoopClosure()();
         } catch (const std::exception &e) {
             error_message = "Error quitting: " + std::string(e.what());
@@ -275,15 +281,15 @@ class FileManager {
         }
     }
 
-    // void print_and_exit(ScreenInteractive &s) {
-    //     try {
-    //         std::cout << visible_entries[selected_index].path << std::endl;
-    //         s.ExitLoopClosure()();
-    //     } catch (const std::exception &e) {
-    //         error_message = "Error printing and exiting: " + std::string(e.what());
-    //         modal = Modal::Error;
-    //     }
-    // }
+    void change_dir(ScreenInteractive &s) {
+        try {
+            to_change_dir = true;
+            s.ExitLoopClosure()();
+        } catch (const std::exception &e) {
+            error_message = "Error quitting: " + std::string(e.what());
+            modal = Modal::Error;
+        }
+    }
 
     void toggle_select() {
         try {
