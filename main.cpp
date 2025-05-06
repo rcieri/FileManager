@@ -6,6 +6,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <iostream>
+// #include <ofstream>
 #include <optional>
 #include <set>
 #include <string>
@@ -41,7 +42,9 @@ class FileManager {
                 std::system(("start /B explorer.exe \"" + *to_open + "\"").c_str());
                 to_open.reset();
             } else if (to_change_dir) {
-                std::cout << visible_entries[selected_index].path << std::endl;
+                std::ofstream outFile("C:/tmp/fm.txt");
+                outFile << visible_entries[selected_index].path;
+                outFile.close();
                 break;
             } else {
                 break;
@@ -149,6 +152,8 @@ class FileManager {
                 open_file(screen);
             else if (event == Event::Character("q"))
                 quit(screen);
+            else if (event == Event::Character("c"))
+                change_dir(screen);
             else if (event == Event::Character("?"))
                 show_help = !show_help;
             else if (event == Event::Character(" "))
