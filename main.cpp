@@ -1,4 +1,4 @@
-#include <algorithm>
+#define NOMINMAX // ✅ Add this to stop Windows macro pollution#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +11,10 @@
 #include <set>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using namespace ftxui;
@@ -45,8 +49,10 @@ class FileManager {
                 std::ofstream outFile("C:/tmp/fm.txt");
                 outFile << visible_entries[selected_index].path;
                 outFile.close();
+                to_change_dir = false;
                 break;
-            } else {
+            } else if (to_quit) {
+                to_quit = false;
                 break;
             }
         }
@@ -55,7 +61,17 @@ class FileManager {
 
   private:
     // --- State and helpers ---
-    enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error } modal = Modal::None;
+    enum class Modal {
+        None,
+        Rename,
+        Move,
+        Delete,
+        NewFile,
+        NewDir,
+        Error,
+        DriveSelect
+    } modal = Modal::None;
+
     fs::path root_path, modal_target;
     std::string modal_input, error_message;
     Component input_box, modal_container;
@@ -71,6 +87,9 @@ class FileManager {
     std::optional<std::string> to_edit, to_open;
     bool to_change_dir = false;
     bool to_quit = false;
+
+    std::vector<std::string> available_drives;
+    int selected_drive_index = 0;
 
     // Clipboard for copy/cut
     std::optional<fs::path> clipboard_path;
@@ -121,6 +140,19 @@ class FileManager {
         }
     }
 
+    std::vector<std::string> list_drives() {
+        std::vector<std::string> drives;
+        DWORD mask = GetLogicalDrives();
+        char drive = 'A';
+        while (mask) {
+            if (mask & 1)
+                drives.push_back(std::string(1, drive) + ":\\");
+            mask >>= 1;
+            drive++;
+        }
+        return drives;
+    }
+
     // --- Input handling ---
     void handle_event(Event event, ScreenInteractive &screen) {
         try {
@@ -154,6 +186,8 @@ class FileManager {
                 quit(screen);
             else if (event == Event::Character("c"))
                 change_dir(screen);
+            else if (event == Event::Character("C"))
+                change_drive(screen);
             else if (event == Event::Character("?"))
                 show_help = !show_help;
             else if (event == Event::Character(" "))
@@ -186,6 +220,25 @@ class FileManager {
 
     void handle_modal_event(Event event) {
         try {
+            if (modal == Modal::DriveSelect) {
+                if (event == Event::ArrowUp || event == Event::Character("k")) {
+                    selected_drive_index = (selected_drive_index - 1 + available_drives.size()) %
+                                           available_drives.size();
+                } else if (event == Event::ArrowDown || event == Event::Character("j")) {
+                    selected_drive_index = (selected_drive_index + 1) % available_drives.size();
+                } else if (event == Event::Return) {
+                    root_path = fs::path(available_drives[selected_drive_index]);
+                    expanded_dirs.clear();
+                    expanded_dirs.insert(root_path);
+                    refresh_entries();
+                    modal = Modal::None;
+                } else if (event == Event::Escape) {
+                    modal = Modal::None;
+                }
+                return; // Important: don't fall through to other modal handling
+            }
+
+            // Default modal behavior (e.g. rename, move, etc.)
             if (event == Event::Return)
                 on_modal_ok();
             else if (event == Event::Escape)
@@ -197,7 +250,6 @@ class FileManager {
             modal = Modal::Error;
         }
     }
-
     // --- Actions ---
     void move_selection(int delta) {
         try {
@@ -296,6 +348,17 @@ class FileManager {
         }
     }
 
+    void change_drive(ScreenInteractive &s) {
+        try {
+            available_drives = list_drives();
+            selected_drive_index = 0;
+            modal = Modal::DriveSelect;
+        } catch (const std::exception &e) {
+            error_message = "Error listing drives: " + std::string(e.what());
+            modal = Modal::Error;
+        }
+    }
+
     void toggle_select() {
         try {
             auto p = visible_entries[selected_index].path;
@@ -319,7 +382,10 @@ class FileManager {
                 modal_input.clear();
             } else if (m == Modal::Rename) {
                 modal_input = modal_target.filename().string();
+                // } else if (m == Modal::DriveSelect) {
+                //     modal_input = modal_target.filename().string();
             }
+
         } catch (const std::exception &e) {
             error_message = "Error prompting modal: " + std::string(e.what());
             modal = Modal::Error;
@@ -402,8 +468,55 @@ class FileManager {
         }
     }
 
-    // --- Rendering ---
-    Element render() {
+    // --- Helper functions ---
+    auto create_modal_box(const Element &main_view, const std::string &title,
+                          Element body_content) {
+        auto backdrop = main_view | color(Color::GrayLight);
+        auto prompt = text(title) | bold | color(Color::White) | bgcolor(Color::Black);
+        auto box =
+            window(text(""),
+                   vbox(Elements{prompt, separator() | bgcolor(Color::Black), body_content})) |
+            bgcolor(Color::Black) | size(WIDTH, EQUAL, 50) | size(HEIGHT, LESS_THAN, 15) | center;
+        return dbox(Elements{backdrop, box});
+    }
+
+    auto create_help_overlay(const Element &main_view) {
+        std::vector<std::pair<std::string, std::string>> help_entries = {
+            {"j", "up"},       {"k", "down"},       {"l", "open"},   {"h", "back"},
+            {"n", "new file"}, {"N", "new dir"},    {"r", "rename"}, {"m", "move"},
+            {"d", "delete"},   {"y", "copy"},       {"x", "cut"},    {"p", "paste"},
+            {"q", "quit"},     {"?", "toggle help"}};
+
+        Elements help_rows;
+        help_rows.push_back(text("[Key]  Description") | bold);
+        help_rows.push_back(separator());
+        for (auto &e : help_entries) {
+            help_rows.push_back(
+                hbox(Elements{text(e.first) | bold, text("     "), text(e.second)}));
+        }
+        auto help_box = window(text(""), vbox(help_rows));
+        return dbox(
+            Elements{main_view, vbox(Elements{filler(), hbox(Elements{filler(), help_box})})});
+    }
+
+    auto create_drive_select_modal(const Element &main_view) {
+        auto backdrop = main_view | color(Color::White);
+        std::vector<Element> drive_rows;
+        for (size_t i = 0; i < available_drives.size(); ++i) {
+            auto drive = available_drives[i];
+            auto drive_name = text(drive);
+            if (i == selected_drive_index)
+                drive_name = drive_name | inverted;
+            drive_rows.push_back(hbox(Elements{drive_name}));
+        }
+        auto drive_list = vbox(drive_rows) | border;
+        auto box = window(text("Select Drive"), drive_list) | size(WIDTH, EQUAL, 50) |
+                   size(HEIGHT, LESS_THAN, 15) | center;
+        return dbox(Elements{backdrop, box});
+    }
+
+    // --- Main rendering function ---
+    auto render() {
         auto cwd = text("Current Directory: " + root_path.string()) | bold | color(Color::Yellow);
         std::vector<Element> rows;
         for (size_t i = 0; i < visible_entries.size(); ++i) {
@@ -421,57 +534,49 @@ class FileManager {
         auto main_view = vbox(Elements{cwd, vbox(rows) | border});
 
         // Modal overlay
-        if (modal != Modal::None) {
-            auto backdrop = main_view | color(Color::GrayLight);
+        if (modal != Modal::None && modal != Modal::DriveSelect) {
             std::string title;
+            Element body;
+
             switch (modal) {
             case Modal::Rename:
                 title = "Rename to:";
+                body = input_box->Render();
                 break;
             case Modal::Move:
                 title = "Move to folder:";
+                body = input_box->Render();
                 break;
             case Modal::NewFile:
                 title = "New file name:";
+                body = input_box->Render();
                 break;
             case Modal::NewDir:
                 title = "New directory name:";
+                body = input_box->Render();
+                break;
+            case Modal::Delete:
+                title = "Delete";
+                body = hbox(
+                    Elements{text("Delete ") | bold | bgcolor(Color::Red),
+                             text(modal_target.filename().string()) | bold | bgcolor(Color::Red)});
                 break;
             default:
-                title = "";
                 break;
             }
-            auto prompt = text(title) | bold | color(Color::White) | bgcolor(Color::Black);
-            auto body = (modal == Modal::Delete)
-                            ? hbox(Elements{text("Delete ") | bold | bgcolor(Color::Red),
-                                            text(modal_target.filename().string()) | bold |
-                                                bgcolor(Color::Red)})
-                            : input_box->Render();
-            auto box = window(text(""),
-                              vbox(Elements{prompt, separator() | bgcolor(Color::Black), body})) |
-                       bgcolor(Color::Black) | size(WIDTH, EQUAL, 50) |
-                       size(HEIGHT, LESS_THAN, 15) | center;
-            return dbox(Elements{backdrop, box});
+
+            return create_modal_box(main_view, title, body);
         }
 
         // Help overlay bottom-right
         if (show_help) {
-            std::vector<std::pair<std::string, std::string>> help_entries = {
-                {"j", "up"},       {"k", "down"},       {"l", "open"},   {"h", "back"},
-                {"n", "new file"}, {"N", "new dir"},    {"r", "rename"}, {"m", "move"},
-                {"d", "delete"},   {"y", "copy"},       {"x", "cut"},    {"p", "paste"},
-                {"q", "quit"},     {"?", "toggle help"}};
-            Elements help_rows;
-            help_rows.push_back(text("[Key]  Description") | bold);
-            help_rows.push_back(separator());
-            for (auto &e : help_entries) {
-                help_rows.push_back(
-                    hbox(Elements{text(e.first) | bold, text("     "), text(e.second)}));
-            }
-            auto help_box = window(text(""), vbox(help_rows));
-            return dbox(
-                Elements{main_view, vbox(Elements{filler(), hbox(Elements{filler(), help_box})})});
+            return create_help_overlay(main_view);
         }
+
+        // Drive selection modal
+        // if (modal == Modal::DriveSelect) {
+        //     return create_drive_select_modal(main_view);
+        // }
 
         // Default view
         return main_view;
