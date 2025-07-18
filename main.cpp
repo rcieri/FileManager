@@ -30,13 +30,14 @@ class FileManager {
     int Run() {
         while (true) {
             auto screen = ScreenInteractive::Fullscreen();
-            auto renderer = Renderer([&] { return render(); });
+            auto renderer = Renderer([&] { return render(screen); });
             auto interactive = CatchEvent(renderer, [&](Event e) {
                 handle_event(e, screen);
                 return true;
             });
             screen.Loop(interactive);
 
+            // rest of your code
             if (to_edit) {
                 std::system(("hx \"" + *to_edit + "\"").c_str());
                 to_edit.reset();
@@ -82,6 +83,7 @@ class FileManager {
     std::vector<Entry> visible_entries;
     std::set<fs::path> expanded_dirs, selected_files;
     size_t selected_index = 0;
+    size_t scroll_offset = 0;
     bool show_help = false;
     std::optional<std::string> to_edit, to_open;
     bool to_change_dir = false;
@@ -166,13 +168,13 @@ class FileManager {
             }
 
             if (event == Event::Character("j"))
-                move_selection(1);
+                move_selection(1, screen);
             else if (event == Event::Character("k"))
-                move_selection(-1);
+                move_selection(-1, screen);
             if (event == Event::Character("J"))
-                move_selection(4);
+                move_selection(4, screen);
             else if (event == Event::Character("K"))
-                move_selection(-4);
+                move_selection(-4, screen);
             else if (event == Event::Character("h"))
                 go_parent();
             else if (event == Event::Character("l"))
@@ -250,22 +252,28 @@ class FileManager {
         }
     }
     // --- Actions ---
-    void move_selection(int delta) {
-        try {
-            if (visible_entries.empty())
-                return;
-            int idx = (int)selected_index + delta;
-            if (idx < 0)
-                idx = visible_entries.size() - 1;
-            if (idx >= (int)visible_entries.size())
-                idx = 0;
-            selected_index = idx;
-        } catch (const std::exception &e) {
-            error_message = "Error moving selection: " + std::string(e.what());
-            modal = Modal::Error;
+    void move_selection(int delta, ScreenInteractive &screen) {
+        if (visible_entries.empty())
+            return;
+
+        int idx = (int)selected_index + delta;
+        if (idx < 0)
+            idx = visible_entries.size() - 1;
+        if (idx >= (int)visible_entries.size())
+            idx = 0;
+        selected_index = idx;
+
+        size_t max_height = screen.dimy() - 3; // Adjust for header or borders
+
+        // Scroll up if selected above visible window
+        if (selected_index < scroll_offset) {
+            scroll_offset = selected_index;
+        }
+        // Scroll down if selected below visible window
+        else if (selected_index >= scroll_offset + max_height) {
+            scroll_offset = selected_index - max_height + 1;
         }
     }
-
     void go_parent() {
         try {
             if (root_path.has_parent_path()) {
@@ -515,10 +523,17 @@ class FileManager {
     }
 
     // --- Main rendering function ---
-    Element render() {
+    Element render(ScreenInteractive &screen) {
         auto cwd = text("Current Directory: " + root_path.string()) | bold | color(Color::Yellow);
         std::vector<Element> rows;
-        for (size_t i = 0; i < visible_entries.size(); ++i) {
+
+        size_t max_height = screen.dimy() - 3; // Reserve some rows for header, etc.
+
+        // Clip visible_entries by scroll_offset and max_height
+        size_t start = scroll_offset;
+        size_t end = std::min(scroll_offset + max_height, visible_entries.size());
+
+        for (size_t i = start; i < end; ++i) {
             auto [p, depth] = visible_entries[i];
             auto icon =
                 text(fs::is_directory(p) ? (expanded_dirs.count(p) ? "📂 " : "📁 ") : file_icon(p));
@@ -530,8 +545,8 @@ class FileManager {
                 line = line | inverted;
             rows.push_back(line);
         }
-        auto main_view = vbox(Elements{cwd, vbox(rows) | border});
 
+        auto main_view = vbox(Elements{cwd, vbox(rows) | border});
         // Modal overlay
         if (modal != Modal::None && modal != Modal::DriveSelect) {
             std::string title;
