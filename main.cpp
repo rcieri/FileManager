@@ -1,4 +1,4 @@
-#define NOMINMAX // ✅ Add this to stop Windows macro pollution#include <algorithm>
+#define NOMINMAX
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -573,9 +573,9 @@ class FileManager {
         }
 
         // Drive selection modal
-        // if (modal == Modal::DriveSelect) {
-        //     return create_drive_select_modal(main_view);
-        // }
+        if (modal == Modal::DriveSelect) {
+            return create_drive_select_modal(main_view);
+        }
 
         // Default view
         return main_view;
