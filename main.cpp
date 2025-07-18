@@ -12,11 +12,26 @@
 #include <vector>
 
 #ifdef _WIN32
+#include <shlobj.h> // For SHGetKnownFolderPath
 #include <windows.h>
 #endif
 
 namespace fs = std::filesystem;
 using namespace ftxui;
+
+#ifdef _WIN32
+std::string getAppDataRoamingPath() {
+    PWSTR path = NULL;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) {
+        char buffer[MAX_PATH];
+        size_t convertedChars = 0;
+        wcstombs_s(&convertedChars, buffer, MAX_PATH, path, MAX_PATH - 1);
+        CoTaskMemFree(path);
+        return std::string(buffer) + "\\FileManager";
+    }
+    return "";
+}
+#endif
 
 class FileManager {
   public:
@@ -46,7 +61,14 @@ class FileManager {
                 std::system(("start /B explorer.exe \"" + *to_open + "\"").c_str());
                 to_open.reset();
             } else if (to_change_dir) {
-                std::ofstream outFile("C:/tmp/fm.txt");
+#ifdef _WIN32
+                std::string appDataDir = getAppDataRoamingPath();
+                fs::create_directories(appDataDir);
+                std::string filePath = appDataDir + "\\fm.txt";
+                std::ofstream outFile(filePath);
+#else
+                std::ofstream outFile("fm.txt");
+#endif
                 outFile << visible_entries[selected_index].path;
                 outFile.close();
                 to_change_dir = false;
@@ -54,6 +76,17 @@ class FileManager {
             } else if (to_quit) {
                 to_quit = false;
                 break;
+            } else {
+#ifdef _WIN32
+                std::string appDataDir = getAppDataRoamingPath();
+                fs::create_directories(appDataDir);
+                std::string filePath = appDataDir + "\\fm.txt";
+                std::ofstream outFile(filePath);
+#else
+                std::ofstream outFile("fm.txt");
+#endif
+                outFile << visible_entries[selected_index].path;
+                outFile.close();
             }
         }
         return 0;

@@ -4,17 +4,21 @@ project(FileManager LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Where FTXUI was installed; adjust if you installed to a different prefix
-set(FTXUI_DIR "C:/Program Files (x86)/ftxui/lib/cmake/ftxui")
+# Automatically fetch and include FTXUI
+include(FetchContent)
 
-# Tell CMake to find FTXUI via its config file
-find_package(ftxui COMPONENTS screen dom component REQUIRED PATHS "${FTXUI_DIR}")
+FetchContent_Declare(
+  ftxui
+  GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+  GIT_TAG        main  # You can pin to a specific tag or commit if needed
+)
+
+FetchContent_MakeAvailable(ftxui)
 
 add_executable(FileManager
     main.cpp
 )
 
-# Link against the FTXUI libraries
 target_link_libraries(FileManager
     PRIVATE
         ftxui::screen
@@ -22,8 +26,6 @@ target_link_libraries(FileManager
         ftxui::component
 )
 
-# Optionally install the binary
 install(TARGETS FileManager
     RUNTIME DESTINATION bin
 )
-

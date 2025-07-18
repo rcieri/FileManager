@@ -33,3 +33,4 @@
 build
 .cache/clangd/index
 FTXUI
+$installDir/lib/pkgconfig
