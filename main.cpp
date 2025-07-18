@@ -6,7 +6,6 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <iostream>
-// #include <ofstream>
 #include <optional>
 #include <set>
 #include <string>
@@ -516,7 +515,7 @@ class FileManager {
     }
 
     // --- Main rendering function ---
-    auto render() {
+    Element render() {
         auto cwd = text("Current Directory: " + root_path.string()) | bold | color(Color::Yellow);
         std::vector<Element> rows;
         for (size_t i = 0; i < visible_entries.size(); ++i) {
