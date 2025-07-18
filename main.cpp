@@ -1,3 +1,4 @@
+#include <thread>
 #define NOMINMAX
 #include <cstdlib>
 #include <filesystem>
@@ -85,9 +86,11 @@ class FileManager {
 #else
                 std::ofstream outFile("fm.txt");
 #endif
-                outFile << visible_entries[selected_index].path;
+                outFile << ".";
                 outFile.close();
+                break;
             }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         return 0;
     }
