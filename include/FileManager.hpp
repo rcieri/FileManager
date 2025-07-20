@@ -9,7 +9,6 @@
 #include <string>
 #include <vector>
 
-using namespace ftxui;
 namespace fs = std::filesystem;
 
 class FileManager {
@@ -17,8 +16,8 @@ class FileManager {
     FileManager() : rootPath(fs::current_path()) {
         expandedDirs.insert(rootPath);
         refresh();
-        inputBox = Input(&modalInput, "");
-        modalContainer = Container::Vertical({inputBox});
+        inputBox = ftxui::Input(&modalInput, "");
+        modalContainer = ftxui::Container::Vertical({inputBox});
     }
 
     int Run();
@@ -35,7 +34,7 @@ class FileManager {
 
     fs::path rootPath, modalTarget;
     std::string modalInput, error;
-    Component inputBox, modalContainer;
+    ftxui::Component inputBox, modalContainer;
 
     std::vector<Entry> visibleEntries;
     std::set<fs::path> expandedDirs, selectedFiles;
@@ -57,18 +56,18 @@ class FileManager {
     std::vector<std::string> listDrives();
 
     // Input handlers
-    void handleEvent(Event, ScreenInteractive &);
-    void handleModalEvent(Event);
+    void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
+    void handleModalEvent(ftxui::Event);
     bool handleTermCommand(TermCmds, const std::string);
-    void moveSelection(int delta, ScreenInteractive &);
+    void moveSelection(int delta, ftxui::ScreenInteractive &);
     void goToParent();
     void openDir();
     void toggleExpand();
-    void editFile(ScreenInteractive &);
-    void openFile(ScreenInteractive &);
-    void quit(ScreenInteractive &);
-    void changeDir(ScreenInteractive &);
-    void changeDrive(ScreenInteractive &);
+    void editFile(ftxui::ScreenInteractive &);
+    void openFile(ftxui::ScreenInteractive &);
+    void quit(ftxui::ScreenInteractive &);
+    void changeDir(ftxui::ScreenInteractive &);
+    void changeDrive(ftxui::ScreenInteractive &);
     void toggleSelect();
     void promptModal(Modal);
     void copy();
@@ -77,12 +76,12 @@ class FileManager {
     void onModalSwitch();
 
     // Rendering helpers
-    Element createModalBox(const Element &, const std::string &, Element);
-    Element createHelpOverlay(const Element &);
-    Element createDriveSelect(const Element &);
-    Element render(ScreenInteractive &);
+    ftxui::Element createModalBox(const ftxui::Element &, const std::string &, ftxui::Element);
+    ftxui::Element createHelpOverlay(const ftxui::Element &);
+    ftxui::Element createDriveSelect(const ftxui::Element &);
+    ftxui::Element render(ftxui::ScreenInteractive &);
 
     // Visual helpers
     std::string getFileIcon(const fs::path &);
-    Element applyStyle(const fs::path &, Element);
+    ftxui::Element applyStyle(const fs::path &, ftxui::Element);
 };

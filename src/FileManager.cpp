@@ -168,7 +168,7 @@ void FileManager::handleModalEvent(Event event) {
         modalContainer->OnEvent(event);
 }
 
-bool handleTermCommand(FileManager::TermCmds termCmd, const std::string path) {
+bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::string path) {
     switch (termCmd) {
     case FileManager::TermCmds::Edit:
         std::system(("hx \"" + path + "\"").c_str());

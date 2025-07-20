@@ -13,8 +13,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(ftxui)
 
 add_executable(FileManager
-    main.cpp
     src/FileManager.cpp
+    main.cpp
 )
 
 target_include_directories(FileManager PRIVATE include)
