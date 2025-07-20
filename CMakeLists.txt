@@ -14,6 +14,7 @@ FetchContent_MakeAvailable(ftxui)
 
 add_executable(FileManager
     src/FileManager.cpp
+    src/Ui.cpp
     main.cpp
 )
 

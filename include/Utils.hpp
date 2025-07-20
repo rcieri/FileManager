@@ -1,5 +1,7 @@
 #include <filesystem>
 #include <fstream>
+#include <ftxui/dom/elements.hpp>
+#include <regex>
 #include <shlobj.h>
 #include <string>
 #include <windows.h>

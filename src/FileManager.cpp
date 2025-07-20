@@ -1,4 +1,5 @@
 #include "FileManager.hpp"
+#include "Ui.hpp"
 #include "Utils.hpp"
 
 #include <filesystem>
@@ -11,15 +12,15 @@
 #include <set>
 #include <shlobj.h>
 #include <string>
-#include <thread>
 #include <vector>
 
 using namespace ftxui;
 
 int FileManager::Run() {
+    UI ui(*this);
     while (true) {
         ScreenInteractive screen = ScreenInteractive::Fullscreen();
-        auto renderer = Renderer([this, &screen] { return render(screen); });
+        auto renderer = Renderer([&ui, &screen] { return ui.render(screen); });
         auto interactive = CatchEvent(renderer, [&](Event e) {
             handleEvent(e, screen);
             return true;
@@ -28,9 +29,9 @@ int FileManager::Run() {
         if (handleTermCommand(termCmd, visibleEntries[selectedIndex].path.string())) {
             break;
         } else {
+            termCmd = FileManager::TermCmds::None;
             refresh();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     return 0;
 }
@@ -107,8 +108,10 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                 editFile(screen);
             else if (ch == "o")
                 openFile(screen);
-            else if (ch == "q")
+            if (ch == "\x03")
                 quit(screen);
+            else if (ch == "q")
+                quitToLast(screen);
             else if (ch == "c")
                 changeDir(screen);
             else if (ch == "C")
@@ -179,10 +182,12 @@ bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::st
     case FileManager::TermCmds::ChangeDir:
         writeToAppDataRoamingFile(path);
         return true;
+    case FileManager::TermCmds::QuitToLast:
+        return true;
     case FileManager::TermCmds::Quit:
+        writeToAppDataRoamingFile(std::string("."));
         return true;
     default:
-        writeToAppDataRoamingFile(std::string("."));
         return true;
     }
 }
@@ -244,6 +249,11 @@ void FileManager::openFile(ScreenInteractive &s) {
 
 void FileManager::quit(ScreenInteractive &s) {
     termCmd = FileManager::TermCmds::Quit;
+    s.ExitLoopClosure()();
+}
+
+void FileManager::quitToLast(ScreenInteractive &s) {
+    termCmd = FileManager::TermCmds::QuitToLast;
     s.ExitLoopClosure()();
 }
 
@@ -327,156 +337,4 @@ void FileManager::onModalSwitch() {
     }
     modal = Modal::None;
     refresh();
-}
-
-// --- UI ---
-Element FileManager::createModalBox(const Element &main_view, const std::string &title,
-                                    Element body) {
-    auto backdrop = main_view | color(Color::GrayLight);
-    auto prompt = text(title) | bold | color(Color::White) | bgcolor(Color::Black);
-    auto box = window(text(""), vbox({prompt, separator() | bgcolor(Color::Black), body})) |
-               bgcolor(Color::Black) | size(WIDTH, EQUAL, 50) | size(HEIGHT, LESS_THAN, 15) |
-               center;
-    return dbox({backdrop, box});
-}
-
-Element FileManager::createHelpOverlay(const Element &main_view) {
-    std::vector<std::pair<std::string, std::string>> help_entries = {
-        {"j", "up"},      {"k", "down"},   {"l", "open"}, {"h", "back"},       {"n", "new file"},
-        {"N", "new dir"}, {"r", "rename"}, {"m", "move"}, {"d", "delete"},     {"y", "copy"},
-        {"x", "cut"},     {"p", "paste"},  {"q", "quit"}, {"?", "toggle help"}};
-
-    Elements help_rows = {text("[Key]  Description") | bold, separator()};
-    for (auto &e : help_entries)
-        help_rows.push_back(hbox({text(e.first) | bold, text("     "), text(e.second)}));
-    auto help_box = window(text(""), vbox(help_rows));
-    return dbox({main_view, vbox({filler(), hbox({filler(), help_box})})});
-}
-
-Element FileManager::createDriveSelect(const Element &main_view) {
-    auto backdrop = main_view | color(Color::White);
-    Elements drive_rows;
-    for (size_t i = 0; i < drives.size(); ++i) {
-        auto drive = text(drives[i]);
-        if (i == selectedDriveIndex)
-            drive = drive | inverted;
-        drive_rows.push_back(hbox({drive}));
-    }
-    auto box = window(text("Select Drive"), vbox(drive_rows) | border) | size(WIDTH, EQUAL, 50) |
-               size(HEIGHT, LESS_THAN, 15) | center;
-    return dbox({backdrop, box});
-}
-
-Element FileManager::render(ScreenInteractive &screen) {
-    auto cwd = text("Current Directory: " + rootPath.string()) | bold | color(Color::Yellow);
-    Elements rows;
-
-    size_t max_height = screen.dimy() - 3;
-    size_t start = scrollOffset;
-    size_t end = std::min(scrollOffset + max_height, visibleEntries.size());
-
-    for (size_t i = start; i < end; ++i) {
-        auto [p, depth] = visibleEntries[i];
-        auto icon =
-            text(fs::is_directory(p) ? (expandedDirs.count(p) ? "📂 " : "📁 ") : getFileIcon(p));
-        Element name = applyStyle(p, text(p.filename().string()));
-        if (selectedFiles.count(p))
-            name = name | bgcolor(Color::BlueLight);
-        auto line = hbox({text(std::string(depth * 2, ' ')), icon, name});
-        if (i == selectedIndex)
-            line = line | inverted;
-        rows.push_back(line);
-    }
-
-    auto main_view = vbox({cwd, vbox(rows) | border});
-
-    if (modal != Modal::None && modal != Modal::DriveSelect) {
-        std::string title;
-        Element body;
-
-        switch (modal) {
-        case Modal::Rename:
-            title = "Rename to:";
-            body = inputBox->Render();
-            break;
-        case Modal::Move:
-            title = "Move to folder:";
-            body = inputBox->Render();
-            break;
-        case Modal::NewFile:
-            title = "New file name:";
-            body = inputBox->Render();
-            break;
-        case Modal::NewDir:
-            title = "New directory name:";
-            body = inputBox->Render();
-            break;
-        case Modal::Delete:
-            title = "Delete";
-            body = hbox({text("Delete ") | bold | bgcolor(Color::Red),
-                         text(modalTarget.filename().string()) | bold | bgcolor(Color::Red)});
-            break;
-        default:
-            break;
-        }
-
-        return createModalBox(main_view, title, body);
-    }
-
-    if (_toShowHelp)
-        return createHelpOverlay(main_view);
-    if (modal == Modal::DriveSelect)
-        return createDriveSelect(main_view);
-
-    return main_view;
-}
-
-std::string FileManager::getFileIcon(const fs::path &p) {
-    std::string ext = p.extension().string();
-    if (ext == ".cpp" || ext == ".h" || ext == ".c")
-        return "🧠 ";
-    if (ext == ".md" || ext == ".txt")
-        return "📝 ";
-    if (ext == ".png" || ext == ".jpg")
-        return "🖼️ ";
-    if (ext == ".json" || ext == ".xml" || ext == ".yaml")
-        return "📄 ";
-    if (ext == ".pdf")
-        return "📚 ";
-    if (ext == ".csv")
-        return "📈 ";
-    if (ext == ".xlsx")
-        return "📁 ";
-    if (ext == ".py")
-        return "🐍 ";
-    if (ext == ".m")
-        return "📐 ";
-    if (ext == ".cs")
-        return "💻 ";
-    return "📃 ";
-}
-
-Element FileManager::applyStyle(const fs::path &p, Element e) {
-    std::string ext = p.extension().string();
-    if (ext == ".cpp" || ext == ".hpp" || ext == ".c" || ext == ".cc" || ext == ".h")
-        return e | color(Color::Green);
-    if (ext == ".md" || ext == ".txt")
-        return e | color(Color::Yellow);
-    if (ext == ".png" || ext == ".jpg")
-        return e | color(Color::Magenta);
-    if (ext == ".json" || ext == ".xml" || ext == ".yaml")
-        return e | color(Color::Cyan);
-    if (ext == ".pdf")
-        return e | color(Color::Red);
-    if (ext == ".csv")
-        return e | color(Color::Blue);
-    if (ext == ".xlsx")
-        return e | color(Color::Green);
-    if (ext == ".py")
-        return e | color(Color::Purple);
-    if (ext == ".m")
-        return e | color(Color::DarkGreen);
-    if (ext == ".cs")
-        return e | color(Color::RedLight);
-    return e;
 }

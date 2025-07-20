@@ -7,6 +7,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -20,11 +21,8 @@ class FileManager {
         modalContainer = ftxui::Container::Vertical({inputBox});
     }
 
-    int Run();
+    enum class TermCmds { None, ChangeDir, Quit, QuitToLast, Edit, Open };
 
-    enum class TermCmds { None, ChangeDir, Quit, Edit, Open };
-
-  private:
     enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error, DriveSelect };
 
     struct Entry {
@@ -35,22 +33,21 @@ class FileManager {
     fs::path rootPath, modalTarget;
     std::string modalInput, error;
     ftxui::Component inputBox, modalContainer;
-
     std::vector<Entry> visibleEntries;
     std::set<fs::path> expandedDirs, selectedFiles;
     std::vector<std::string> drives;
-
+    std::unordered_map<fs::path, std::vector<std::string>> previewCache;
     size_t selectedIndex = 0;
     size_t scrollOffset = 0;
     int selectedDriveIndex = 0;
     bool _toShowHelp = false;
     TermCmds termCmd = TermCmds::None;
     Modal modal = Modal::None;
-
     std::optional<fs::path> clipPath;
     bool clipCut = false;
 
     // Core methods
+    int Run();
     void refresh();
     void buildTree(const fs::path &, int);
     std::vector<std::string> listDrives();
@@ -66,6 +63,7 @@ class FileManager {
     void editFile(ftxui::ScreenInteractive &);
     void openFile(ftxui::ScreenInteractive &);
     void quit(ftxui::ScreenInteractive &);
+    void quitToLast(ftxui::ScreenInteractive &);
     void changeDir(ftxui::ScreenInteractive &);
     void changeDrive(ftxui::ScreenInteractive &);
     void toggleSelect();
@@ -74,14 +72,4 @@ class FileManager {
     void cut();
     void paste();
     void onModalSwitch();
-
-    // Rendering helpers
-    ftxui::Element createModalBox(const ftxui::Element &, const std::string &, ftxui::Element);
-    ftxui::Element createHelpOverlay(const ftxui::Element &);
-    ftxui::Element createDriveSelect(const ftxui::Element &);
-    ftxui::Element render(ftxui::ScreenInteractive &);
-
-    // Visual helpers
-    std::string getFileIcon(const fs::path &);
-    ftxui::Element applyStyle(const fs::path &, ftxui::Element);
 };
