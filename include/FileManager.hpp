@@ -9,62 +9,66 @@
 #include <string>
 #include <vector>
 
+using namespace ftxui;
+namespace fs = std::filesystem;
+
 class FileManager {
   public:
-    FileManager() : root_path(std::filesystem::current_path()) {
-        expanded_dirs.insert(root_path);
+    FileManager() : rootPath(fs::current_path()) {
+        expandedDirs.insert(rootPath);
         refresh();
-        input_box = ftxui::Input(&modal_input, "");
-        modal_container = ftxui::Container::Vertical({input_box});
+        inputBox = Input(&modalInput, "");
+        modalContainer = Container::Vertical({inputBox});
     }
 
     int Run();
+
+    enum class TermCmds { None, ChangeDir, Quit, Edit, Open };
 
   private:
     enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error, DriveSelect };
 
     struct Entry {
-        std::filesystem::path path;
+        fs::path path;
         int depth;
     };
 
-    std::filesystem::path root_path, modal_target;
-    std::string modal_input, error_message;
-    ftxui::Component input_box, modal_container;
+    fs::path rootPath, modalTarget;
+    std::string modalInput, error;
+    Component inputBox, modalContainer;
 
-    std::vector<Entry> visible_entries;
-    std::set<std::filesystem::path> expanded_dirs, selected_files;
-    std::vector<std::string> available_drives;
+    std::vector<Entry> visibleEntries;
+    std::set<fs::path> expandedDirs, selectedFiles;
+    std::vector<std::string> drives;
 
-    size_t selected_index = 0;
-    size_t scroll_offset = 0;
-    int selected_drive_index = 0;
-    bool show_help = false;
-    bool to_change_dir = false;
-    bool to_quit = false;
+    size_t selectedIndex = 0;
+    size_t scrollOffset = 0;
+    int selectedDriveIndex = 0;
+    bool _toShowHelp = false;
+    TermCmds termCmd = TermCmds::None;
     Modal modal = Modal::None;
 
-    std::optional<std::string> to_edit, to_open;
-    std::optional<std::filesystem::path> clipboard_path;
-    bool clipboard_cut = false;
+    std::optional<fs::path> clipPath;
+    bool clipCut = false;
 
     // Core methods
     void refresh();
-    void buildTree(const std::filesystem::path &, int);
+    void buildTree(const fs::path &, int);
     std::vector<std::string> listDrives();
 
     // Input handlers
-    void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
-    void handleModalEvent(ftxui::Event);
-    void moveSelection(int delta, ftxui::ScreenInteractive &);
+    void handleEvent(Event, ScreenInteractive &);
+    void handleModalEvent(Event);
+    bool handleTermCommand(TermCmds, const std::string);
+    void moveSelection(int delta, ScreenInteractive &);
     void goToParent();
     void openDir();
     void toggleExpand();
-    void editFile(ftxui::ScreenInteractive &);
-    void openFile(ftxui::ScreenInteractive &);
-    void quit(ftxui::ScreenInteractive &);
-    void changeDir(ftxui::ScreenInteractive &);
-    void changeDrive(ftxui::ScreenInteractive &);
+    void editFile(ScreenInteractive &);
+    void openFile(ScreenInteractive &);
+    void quit(ScreenInteractive &);
+    void changeDir(ScreenInteractive &);
+    void changeDrive(ScreenInteractive &);
     void toggleSelect();
     void promptModal(Modal);
     void copy();
@@ -73,12 +77,12 @@ class FileManager {
     void onModalSwitch();
 
     // Rendering helpers
-    ftxui::Element createModalBox(const ftxui::Element &, const std::string &, ftxui::Element);
-    ftxui::Element createHelpOverlay(const ftxui::Element &);
-    ftxui::Element createDriveSelect(const ftxui::Element &);
-    ftxui::Element render(ftxui::ScreenInteractive &);
+    Element createModalBox(const Element &, const std::string &, Element);
+    Element createHelpOverlay(const Element &);
+    Element createDriveSelect(const Element &);
+    Element render(ScreenInteractive &);
 
     // Visual helpers
-    std::string getFileIcon(const std::filesystem::path &);
-    ftxui::Element applyStyle(const std::filesystem::path &, ftxui::Element);
+    std::string getFileIcon(const fs::path &);
+    Element applyStyle(const fs::path &, Element);
 };

@@ -1,3 +1,4 @@
+#include "FileManager.hpp"
 #include <filesystem>
 #include <fstream>
 #include <shlobj.h>
@@ -6,7 +7,7 @@
 
 namespace fs = std::filesystem;
 
-bool writeToAppDataRoamingFile(std::string changePath) {
+void writeToAppDataRoamingFile(std::string changePath) {
     PWSTR path = NULL;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) {
         char buffer[MAX_PATH];
@@ -19,8 +20,5 @@ bool writeToAppDataRoamingFile(std::string changePath) {
         std::ofstream outFile(filePath);
         outFile << changePath;
         outFile.close();
-        return true;
-    } else {
-        return false;
     }
 }

@@ -18,32 +18,17 @@ using namespace ftxui;
 
 int FileManager::Run() {
     while (true) {
-        auto screen = ScreenInteractive::Fullscreen();
-        auto renderer = ftxui::Renderer([this, &screen] { return render(screen); });
+        ScreenInteractive screen = ScreenInteractive::Fullscreen();
+        auto renderer = Renderer([this, &screen] { return render(screen); });
         auto interactive = CatchEvent(renderer, [&](Event e) {
             handleEvent(e, screen);
             return true;
         });
         screen.Loop(interactive);
-
-        if (to_edit) {
-            std::system(("hx \"" + *to_edit + "\"").c_str());
-            to_edit.reset();
-            refresh();
-        } else if (to_open) {
-            std::system(("start /B explorer.exe \"" + *to_open + "\"").c_str());
-            to_open.reset();
-        } else if (to_change_dir) {
-            writeToAppDataRoamingFile(visible_entries[selected_index].path.string());
-            to_change_dir = false;
-            break;
-        } else if (to_quit) {
-            to_quit = false;
+        if (handleTermCommand(termCmd, visibleEntries[selectedIndex].path.string())) {
             break;
         } else {
-            std::string cwd = ".";
-            writeToAppDataRoamingFile(cwd);
-            break;
+            refresh();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -51,47 +36,35 @@ int FileManager::Run() {
 }
 
 void FileManager::refresh() {
-    visible_entries.clear();
-    buildTree(root_path, 0);
-    if (!visible_entries.empty())
-        selected_index = std::min(selected_index, visible_entries.size() - 1);
+    visibleEntries.clear();
+    buildTree(rootPath, 0);
+    if (!visibleEntries.empty())
+        selectedIndex = std::min(selectedIndex, visibleEntries.size() - 1);
 }
 
 void FileManager::buildTree(const fs::path &path, int depth) {
-    try {
-        if (!fs::exists(path) || !fs::is_directory(path)) {
-            return;
-        }
+    if (!fs::exists(path) || !fs::is_directory(path))
+        return;
 
-        std::vector<fs::directory_entry> children;
-        try {
-            for (auto &e : fs::directory_iterator(path))
-                children.push_back(e);
-        } catch (const std::exception &e) {
-            error_message = "Permission denied: " + path.string() + " - " + e.what();
-            modal = Modal::Error;
-            return;
-        }
+    std::vector<fs::directory_entry> children;
+    for (auto &e : fs::directory_iterator(path))
+        children.push_back(e);
 
-        std::sort(children.begin(), children.end(), [](auto &a, auto &b) {
-            bool da = fs::is_directory(a), db = fs::is_directory(b);
-            if (da != db)
-                return da > db;
-            auto an = a.path().filename().string();
-            auto bn = b.path().filename().string();
-            std::transform(an.begin(), an.end(), an.begin(), ::tolower);
-            std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
-            return an < bn;
-        });
+    std::sort(children.begin(), children.end(), [](auto &a, auto &b) {
+        bool da = fs::is_directory(a), db = fs::is_directory(b);
+        if (da != db)
+            return da > db;
+        auto an = a.path().filename().string();
+        auto bn = b.path().filename().string();
+        std::transform(an.begin(), an.end(), an.begin(), ::tolower);
+        std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+        return an < bn;
+    });
 
-        for (auto &e : children) {
-            visible_entries.push_back({e.path(), depth});
-            if (fs::is_directory(e.path()) && expanded_dirs.count(e.path()))
-                buildTree(e.path(), depth + 1);
-        }
-    } catch (const std::exception &e) {
-        error_message = "Failed to build tree: " + std::string(e.what());
-        modal = Modal::Error;
+    for (auto &e : children) {
+        visibleEntries.push_back({e.path(), depth});
+        if (fs::is_directory(e.path()) && expandedDirs.count(e.path()))
+            buildTree(e.path(), depth + 1);
     }
 }
 
@@ -116,329 +89,255 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
             return;
         }
 
-        if (modal == Modal::Error) {
-            modal = Modal::None;
-            return;
-        }
-
-        if (event == Event::Character("j"))
-            moveSelection(1, screen);
-        else if (event == Event::Character("k"))
-            moveSelection(-1, screen);
-        if (event == Event::Character("J"))
-            moveSelection(4, screen);
-        else if (event == Event::Character("K"))
-            moveSelection(-4, screen);
-        else if (event == Event::Character("h"))
-            goToParent();
-        else if (event == Event::Character("l"))
-            openDir();
-        else if (event == Event::Character("e"))
-            editFile(screen);
-        else if (event == Event::Character("o"))
-            openFile(screen);
-        else if (event == Event::Character("q"))
-            quit(screen);
-        else if (event == Event::Character("c"))
-            changeDir(screen);
-        else if (event == Event::Character("C"))
-            changeDrive(screen);
-        else if (event == Event::Character("?"))
-            show_help = !show_help;
-        else if (event == Event::Character(" "))
-            toggleSelect();
-        else if (event == Event::Character("r"))
-            promptModal(Modal::Rename);
-        else if (event == Event::Character("m"))
-            promptModal(Modal::Move);
-        else if (event == Event::Character("d"))
-            promptModal(Modal::Delete);
-        else if (event == Event::Character("n"))
-            promptModal(Modal::NewFile);
-        else if (event == Event::Character("N"))
-            promptModal(Modal::NewDir);
-        else if (event == Event::Character("y"))
-            copy();
-        else if (event == Event::Character("x"))
-            cut();
-        else if (event == Event::Character("p"))
-            paste();
-        else if (event == Event::Return)
+        if (event.is_character()) {
+            const std::string &ch = event.character();
+            if (ch == "j")
+                moveSelection(1, screen);
+            else if (ch == "k")
+                moveSelection(-1, screen);
+            else if (ch == "J")
+                moveSelection(4, screen);
+            else if (ch == "K")
+                moveSelection(-4, screen);
+            else if (ch == "h")
+                goToParent();
+            else if (ch == "l")
+                openDir();
+            else if (ch == "e")
+                editFile(screen);
+            else if (ch == "o")
+                openFile(screen);
+            else if (ch == "q")
+                quit(screen);
+            else if (ch == "c")
+                changeDir(screen);
+            else if (ch == "C")
+                changeDrive(screen);
+            else if (ch == "?")
+                _toShowHelp = !_toShowHelp;
+            else if (ch == " ")
+                toggleSelect();
+            else if (ch == "r")
+                promptModal(Modal::Rename);
+            else if (ch == "m")
+                promptModal(Modal::Move);
+            else if (ch == "d")
+                promptModal(Modal::Delete);
+            else if (ch == "n")
+                promptModal(Modal::NewFile);
+            else if (ch == "N")
+                promptModal(Modal::NewDir);
+            else if (ch == "y")
+                copy();
+            else if (ch == "x")
+                cut();
+            else if (ch == "p")
+                paste();
+        } else if (event == Event::Return) {
             toggleExpand();
-        // else if (event == Event::Character("c"))
-        //     print_and_exit(screen);
+        }
     } catch (const std::exception &e) {
-        error_message = "Error handling event: " + std::string(e.what());
+        error = "Error handling event: " + std::string(e.what());
         modal = Modal::Error;
     }
 }
 
 void FileManager::handleModalEvent(Event event) {
-    try {
-        if (modal == Modal::DriveSelect) {
-            if (event == Event::ArrowUp || event == Event::Character("k")) {
-                selected_drive_index =
-                    (selected_drive_index - 1 + available_drives.size()) % available_drives.size();
-            } else if (event == Event::ArrowDown || event == Event::Character("j")) {
-                selected_drive_index = (selected_drive_index + 1) % available_drives.size();
-            } else if (event == Event::Return) {
-                root_path = fs::path(available_drives[selected_drive_index]);
-                expanded_dirs.clear();
-                expanded_dirs.insert(root_path);
-                refresh();
-                modal = Modal::None;
-            } else if (event == Event::Escape) {
-                modal = Modal::None;
-            }
-            return; // Important: don't fall through to other modal handling
-        }
-
-        // Default modal behavior (e.g. rename, move, etc.)
-        if (event == Event::Return)
-            onModalSwitch();
-        else if (event == Event::Escape)
+    if (modal == Modal::DriveSelect) {
+        if (event == Event::ArrowUp || event == Event::Character("k"))
+            selectedDriveIndex = (selectedDriveIndex - 1 + drives.size()) % drives.size();
+        else if (event == Event::ArrowDown || event == Event::Character("j"))
+            selectedDriveIndex = (selectedDriveIndex + 1) % drives.size();
+        else if (event == Event::Return) {
+            rootPath = fs::path(drives[selectedDriveIndex]);
+            expandedDirs.clear();
+            expandedDirs.insert(rootPath);
+            refresh();
             modal = Modal::None;
-        else
-            modal_container->OnEvent(event);
-    } catch (const std::exception &e) {
-        error_message = "Error handling modal event: " + std::string(e.what());
-        modal = Modal::Error;
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        }
+        return;
+    }
+
+    if (event == Event::Return)
+        onModalSwitch();
+    else if (event == Event::Escape)
+        modal = Modal::None;
+    else
+        modalContainer->OnEvent(event);
+}
+
+bool handleTermCommand(FileManager::TermCmds termCmd, const std::string path) {
+    switch (termCmd) {
+    case FileManager::TermCmds::Edit:
+        std::system(("hx \"" + path + "\"").c_str());
+        return false;
+    case FileManager::TermCmds::Open:
+        std::system(("start /B explorer.exe \"" + path + "\"").c_str());
+        return false;
+    case FileManager::TermCmds::ChangeDir:
+        writeToAppDataRoamingFile(path);
+        return true;
+    case FileManager::TermCmds::Quit:
+        return true;
+    default:
+        writeToAppDataRoamingFile(std::string("."));
+        return true;
     }
 }
+
 // --- Actions ---
 void FileManager::moveSelection(int delta, ScreenInteractive &screen) {
-    if (visible_entries.empty())
+    if (visibleEntries.empty())
         return;
 
-    int idx = (int)selected_index + delta;
+    int idx = (int)selectedIndex + delta;
     if (idx < 0)
-        idx = visible_entries.size() - 1;
-    if (idx >= (int)visible_entries.size())
+        idx = visibleEntries.size() - 1;
+    if (idx >= (int)visibleEntries.size())
         idx = 0;
-    selected_index = idx;
+    selectedIndex = idx;
 
-    size_t max_height = screen.dimy() - 3; // Adjust for header or borders
-
-    // Scroll up if selected above visible window
-    if (selected_index < scroll_offset) {
-        scroll_offset = selected_index;
-    }
-    // Scroll down if selected below visible window
-    else if (selected_index >= scroll_offset + max_height) {
-        scroll_offset = selected_index - max_height + 1;
-    }
+    size_t max_height = screen.dimy() - 3;
+    if (selectedIndex < scrollOffset)
+        scrollOffset = selectedIndex;
+    else if (selectedIndex >= scrollOffset + max_height)
+        scrollOffset = selectedIndex - max_height + 1;
 }
+
 void FileManager::goToParent() {
-    try {
-        if (root_path.has_parent_path()) {
-            root_path = root_path.parent_path();
-            refresh();
-        }
-    } catch (const std::exception &e) {
-        error_message = "Error navigating to parent: " + std::string(e.what());
-        modal = Modal::Error;
+    if (rootPath.has_parent_path()) {
+        rootPath = rootPath.parent_path();
+        refresh();
     }
 }
 
 void FileManager::openDir() {
-    try {
-        auto &p = visible_entries[selected_index].path;
-        if (fs::is_directory(p)) {
-            root_path = p;
-            refresh();
-        }
-    } catch (const std::exception &e) {
-        error_message = "Error opening directory: " + std::string(e.what());
-        modal = Modal::Error;
+    auto &p = visibleEntries[selectedIndex].path;
+    if (fs::is_directory(p)) {
+        rootPath = p;
+        refresh();
     }
 }
 
 void FileManager::toggleExpand() {
-    try {
-        auto &p = visible_entries[selected_index].path;
-        if (!fs::is_directory(p))
-            return;
-        if (expanded_dirs.count(p))
-            expanded_dirs.erase(p);
-        else
-            expanded_dirs.insert(p);
-        refresh();
-    } catch (const std::exception &e) {
-        error_message = "Error toggling expand: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    auto &p = visibleEntries[selectedIndex].path;
+    if (!fs::is_directory(p))
+        return;
+    if (expandedDirs.count(p))
+        expandedDirs.erase(p);
+    else
+        expandedDirs.insert(p);
+    refresh();
 }
 
 void FileManager::editFile(ScreenInteractive &s) {
-    try {
-        to_edit = visible_entries[selected_index].path.string();
-        s.ExitLoopClosure()();
-    } catch (const std::exception &e) {
-        error_message = "Error editing file: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    termCmd = FileManager::TermCmds::Edit;
+    s.ExitLoopClosure()();
 }
 
 void FileManager::openFile(ScreenInteractive &s) {
-    try {
-        to_open = visible_entries[selected_index].path.string();
-        s.ExitLoopClosure()();
-    } catch (const std::exception &e) {
-        error_message = "Error opening file: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    termCmd = FileManager::TermCmds::Open;
+    s.ExitLoopClosure()();
 }
 
 void FileManager::quit(ScreenInteractive &s) {
-    try {
-        to_quit = true;
-        s.ExitLoopClosure()();
-    } catch (const std::exception &e) {
-        error_message = "Error quitting: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    termCmd = FileManager::TermCmds::Quit;
+    s.ExitLoopClosure()();
 }
 
 void FileManager::changeDir(ScreenInteractive &s) {
-    try {
-        to_change_dir = true;
-        s.ExitLoopClosure()();
-    } catch (const std::exception &e) {
-        error_message = "Error quitting: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    termCmd = FileManager::TermCmds::ChangeDir;
+    s.ExitLoopClosure()();
 }
 
-void FileManager::changeDrive(ScreenInteractive &s) {
-    try {
-        available_drives = listDrives();
-        selected_drive_index = 0;
-        modal = Modal::DriveSelect;
-    } catch (const std::exception &e) {
-        error_message = "Error listing drives: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+void FileManager::changeDrive(ScreenInteractive &) {
+    drives = listDrives();
+    selectedDriveIndex = 0;
+    modal = Modal::DriveSelect;
 }
 
 void FileManager::toggleSelect() {
-    try {
-        auto p = visible_entries[selected_index].path;
-        if (selected_files.count(p))
-            selected_files.erase(p);
-        else
-            selected_files.insert(p);
-    } catch (const std::exception &e) {
-        error_message = "Error toggling select: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    auto p = visibleEntries[selectedIndex].path;
+    if (selectedFiles.count(p))
+        selectedFiles.erase(p);
+    else
+        selectedFiles.insert(p);
 }
 
 void FileManager::promptModal(Modal m) {
-    try {
-        modal = m;
-        modal_target = visible_entries[selected_index].path;
-        if (m == Modal::NewFile || m == Modal::NewDir) {
-            if (!fs::is_directory(modal_target))
-                modal_target = modal_target.parent_path();
-            modal_input.clear();
-        } else if (m == Modal::Rename) {
-            modal_input = modal_target.filename().string();
-            // } else if (m == Modal::DriveSelect) {
-            //     modal_input = modal_target.filename().string();
-        }
-
-    } catch (const std::exception &e) {
-        error_message = "Error prompting modal: " + std::string(e.what());
-        modal = Modal::Error;
+    modal = m;
+    modalTarget = visibleEntries[selectedIndex].path;
+    if (m == Modal::NewFile || m == Modal::NewDir) {
+        if (!fs::is_directory(modalTarget))
+            modalTarget = modalTarget.parent_path();
+        modalInput.clear();
+    } else if (m == Modal::Rename) {
+        modalInput = modalTarget.filename().string();
     }
 }
 
 void FileManager::copy() {
-    try {
-        clipboard_path = visible_entries[selected_index].path;
-        clipboard_cut = false;
-    } catch (const std::exception &e) {
-        error_message = "Error copying file: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    clipPath = visibleEntries[selectedIndex].path;
+    clipCut = false;
 }
 
 void FileManager::cut() {
-    try {
-        clipboard_path = visible_entries[selected_index].path;
-        clipboard_cut = true;
-    } catch (const std::exception &e) {
-        error_message = "Error cutting file: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    clipPath = visibleEntries[selectedIndex].path;
+    clipCut = true;
 }
 
 void FileManager::paste() {
-    try {
-        if (!clipboard_path)
-            return;
-        fs::path dest = root_path / clipboard_path->filename();
-        try {
-            if (clipboard_cut)
-                fs::rename(*clipboard_path, dest);
-            else if (fs::is_directory(*clipboard_path))
-                fs::copy(*clipboard_path, dest, fs::copy_options::recursive);
-            else
-                fs::copy_file(*clipboard_path, dest);
-            clipboard_path.reset();
-            refresh();
-        } catch (const std::exception &e) {
-            error_message = "Error pasting file: " + std::string(e.what());
-            modal = Modal::Error;
-        }
-    } catch (const std::exception &e) {
-        error_message = "Error pasting file: " + std::string(e.what());
-        modal = Modal::Error;
-    }
+    if (!clipPath)
+        return;
+    fs::path dest = rootPath / clipPath->filename();
+    if (clipCut)
+        fs::rename(*clipPath, dest);
+    else if (fs::is_directory(*clipPath))
+        fs::copy(*clipPath, dest, fs::copy_options::recursive);
+    else
+        fs::copy_file(*clipPath, dest);
+    clipPath.reset();
+    refresh();
 }
 
 void FileManager::onModalSwitch() {
-    try {
-        switch (modal) {
-        case Modal::Rename:
-            fs::rename(modal_target, modal_target.parent_path() / modal_input);
-            break;
-        case Modal::Move:
-            fs::rename(modal_target, fs::path(modal_input) / modal_target.filename());
-            break;
-        case Modal::Delete:
-            if (fs::is_directory(modal_target))
-                fs::remove_all(modal_target);
-            else
-                fs::remove(modal_target);
-            break;
-        case Modal::NewFile:
-            std::ofstream((modal_target / modal_input).string());
-            break;
-        case Modal::NewDir:
-            fs::create_directory(modal_target / modal_input);
-            break;
-        default:
-            break;
-        }
-        modal = Modal::None;
-        refresh();
-    } catch (const std::exception &e) {
-        error_message = "Error confirming modal action: " + std::string(e.what());
-        modal = Modal::Error;
+    switch (modal) {
+    case Modal::Rename:
+        fs::rename(modalTarget, modalTarget.parent_path() / modalInput);
+        break;
+    case Modal::Move:
+        fs::rename(modalTarget, fs::path(modalInput) / modalTarget.filename());
+        break;
+    case Modal::Delete:
+        if (fs::is_directory(modalTarget))
+            fs::remove_all(modalTarget);
+        else
+            fs::remove(modalTarget);
+        break;
+    case Modal::NewFile:
+        std::ofstream((modalTarget / modalInput).string());
+        break;
+    case Modal::NewDir:
+        fs::create_directory(modalTarget / modalInput);
+        break;
+    default:
+        break;
     }
+    modal = Modal::None;
+    refresh();
 }
 
-// --- Helper functions ---
+// --- UI ---
 Element FileManager::createModalBox(const Element &main_view, const std::string &title,
-                                    Element body_content) {
+                                    Element body) {
     auto backdrop = main_view | color(Color::GrayLight);
     auto prompt = text(title) | bold | color(Color::White) | bgcolor(Color::Black);
-    auto box = window(text(""),
-                      vbox(Elements{prompt, separator() | bgcolor(Color::Black), body_content})) |
+    auto box = window(text(""), vbox({prompt, separator() | bgcolor(Color::Black), body})) |
                bgcolor(Color::Black) | size(WIDTH, EQUAL, 50) | size(HEIGHT, LESS_THAN, 15) |
                center;
-    return dbox(Elements{backdrop, box});
+    return dbox({backdrop, box});
 }
 
 Element FileManager::createHelpOverlay(const Element &main_view) {
@@ -447,58 +346,50 @@ Element FileManager::createHelpOverlay(const Element &main_view) {
         {"N", "new dir"}, {"r", "rename"}, {"m", "move"}, {"d", "delete"},     {"y", "copy"},
         {"x", "cut"},     {"p", "paste"},  {"q", "quit"}, {"?", "toggle help"}};
 
-    Elements help_rows;
-    help_rows.push_back(text("[Key]  Description") | bold);
-    help_rows.push_back(separator());
-    for (auto &e : help_entries) {
-        help_rows.push_back(hbox(Elements{text(e.first) | bold, text("     "), text(e.second)}));
-    }
+    Elements help_rows = {text("[Key]  Description") | bold, separator()};
+    for (auto &e : help_entries)
+        help_rows.push_back(hbox({text(e.first) | bold, text("     "), text(e.second)}));
     auto help_box = window(text(""), vbox(help_rows));
-    return dbox(Elements{main_view, vbox(Elements{filler(), hbox(Elements{filler(), help_box})})});
+    return dbox({main_view, vbox({filler(), hbox({filler(), help_box})})});
 }
 
 Element FileManager::createDriveSelect(const Element &main_view) {
     auto backdrop = main_view | color(Color::White);
-    std::vector<Element> drive_rows;
-    for (size_t i = 0; i < available_drives.size(); ++i) {
-        auto drive = available_drives[i];
-        auto drive_name = text(drive);
-        if (i == selected_drive_index)
-            drive_name = drive_name | inverted;
-        drive_rows.push_back(hbox(Elements{drive_name}));
+    Elements drive_rows;
+    for (size_t i = 0; i < drives.size(); ++i) {
+        auto drive = text(drives[i]);
+        if (i == selectedDriveIndex)
+            drive = drive | inverted;
+        drive_rows.push_back(hbox({drive}));
     }
-    auto drive_list = vbox(drive_rows) | border;
-    auto box = window(text("Select Drive"), drive_list) | size(WIDTH, EQUAL, 50) |
+    auto box = window(text("Select Drive"), vbox(drive_rows) | border) | size(WIDTH, EQUAL, 50) |
                size(HEIGHT, LESS_THAN, 15) | center;
-    return dbox(Elements{backdrop, box});
+    return dbox({backdrop, box});
 }
 
-// --- Main rendering function ---
 Element FileManager::render(ScreenInteractive &screen) {
-    auto cwd = text("Current Directory: " + root_path.string()) | bold | color(Color::Yellow);
-    std::vector<Element> rows;
+    auto cwd = text("Current Directory: " + rootPath.string()) | bold | color(Color::Yellow);
+    Elements rows;
 
-    size_t max_height = screen.dimy() - 3; // Reserve some rows for header, etc.
-
-    // Clip visible_entries by scroll_offset and max_height
-    size_t start = scroll_offset;
-    size_t end = std::min(scroll_offset + max_height, visible_entries.size());
+    size_t max_height = screen.dimy() - 3;
+    size_t start = scrollOffset;
+    size_t end = std::min(scrollOffset + max_height, visibleEntries.size());
 
     for (size_t i = start; i < end; ++i) {
-        auto [p, depth] = visible_entries[i];
+        auto [p, depth] = visibleEntries[i];
         auto icon =
-            text(fs::is_directory(p) ? (expanded_dirs.count(p) ? "📂 " : "📁 ") : getFileIcon(p));
+            text(fs::is_directory(p) ? (expandedDirs.count(p) ? "📂 " : "📁 ") : getFileIcon(p));
         Element name = applyStyle(p, text(p.filename().string()));
-        if (selected_files.count(p))
+        if (selectedFiles.count(p))
             name = name | bgcolor(Color::BlueLight);
-        auto line = hbox(Elements{text(std::string(depth * 2, ' ')), icon, name});
-        if (i == selected_index)
+        auto line = hbox({text(std::string(depth * 2, ' ')), icon, name});
+        if (i == selectedIndex)
             line = line | inverted;
         rows.push_back(line);
     }
 
-    auto main_view = vbox(Elements{cwd, vbox(rows) | border});
-    // Modal overlay
+    auto main_view = vbox({cwd, vbox(rows) | border});
+
     if (modal != Modal::None && modal != Modal::DriveSelect) {
         std::string title;
         Element body;
@@ -506,25 +397,24 @@ Element FileManager::render(ScreenInteractive &screen) {
         switch (modal) {
         case Modal::Rename:
             title = "Rename to:";
-            body = input_box->Render();
+            body = inputBox->Render();
             break;
         case Modal::Move:
             title = "Move to folder:";
-            body = input_box->Render();
+            body = inputBox->Render();
             break;
         case Modal::NewFile:
             title = "New file name:";
-            body = input_box->Render();
+            body = inputBox->Render();
             break;
         case Modal::NewDir:
             title = "New directory name:";
-            body = input_box->Render();
+            body = inputBox->Render();
             break;
         case Modal::Delete:
             title = "Delete";
-            body =
-                hbox(Elements{text("Delete ") | bold | bgcolor(Color::Red),
-                              text(modal_target.filename().string()) | bold | bgcolor(Color::Red)});
+            body = hbox({text("Delete ") | bold | bgcolor(Color::Red),
+                         text(modalTarget.filename().string()) | bold | bgcolor(Color::Red)});
             break;
         default:
             break;
@@ -533,23 +423,16 @@ Element FileManager::render(ScreenInteractive &screen) {
         return createModalBox(main_view, title, body);
     }
 
-    // Help overlay bottom-right
-    if (show_help) {
+    if (_toShowHelp)
         return createHelpOverlay(main_view);
-    }
-
-    // Drive selection modal
-    if (modal == Modal::DriveSelect) {
+    if (modal == Modal::DriveSelect)
         return createDriveSelect(main_view);
-    }
 
-    // Default view
     return main_view;
 }
 
-// File icon helper
 std::string FileManager::getFileIcon(const fs::path &p) {
-    auto ext = p.extension().string();
+    std::string ext = p.extension().string();
     if (ext == ".cpp" || ext == ".h" || ext == ".c")
         return "🧠 ";
     if (ext == ".md" || ext == ".txt")
@@ -573,9 +456,8 @@ std::string FileManager::getFileIcon(const fs::path &p) {
     return "📃 ";
 }
 
-// Style helper
 Element FileManager::applyStyle(const fs::path &p, Element e) {
-    auto ext = p.extension().string();
+    std::string ext = p.extension().string();
     if (ext == ".cpp" || ext == ".hpp" || ext == ".c" || ext == ".cc" || ext == ".h")
         return e | color(Color::Green);
     if (ext == ".md" || ext == ".txt")
