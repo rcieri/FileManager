@@ -17,6 +17,7 @@ FetchContent_MakeAvailable(ftxui)
 
 add_executable(FileManager
     main.cpp
+    FileManager.cpp
 )
 
 target_link_libraries(FileManager
