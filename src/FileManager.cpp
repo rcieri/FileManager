@@ -1,7 +1,9 @@
 #include "FileManager.hpp"
+#define NOMINMAX
 #include "Ui.hpp"
 #include "Utils.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <ftxui/component/component.hpp>
@@ -132,6 +134,8 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                 promptModal(Modal::NewDir);
             else if (ch == "y")
                 copy();
+            else if (ch == "Y")
+                copyToSys(screen);
             else if (ch == "x")
                 cut();
             else if (ch == "p")
@@ -177,7 +181,10 @@ bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::st
         std::system(("hx \"" + path + "\"").c_str());
         return false;
     case FileManager::TermCmds::Open:
-        std::system(("start /B explorer.exe \"" + path + "\"").c_str());
+        std::system(("start /B explorer \"" + path + "\"").c_str());
+        return false;
+    case FileManager::TermCmds::CopyToSys:
+        std::system(("echo " + path + " | clip").c_str());
         return false;
     case FileManager::TermCmds::ChangeDir:
         writeToAppDataRoamingFile(path);
@@ -291,6 +298,11 @@ void FileManager::promptModal(Modal m) {
 void FileManager::copy() {
     clipPath = visibleEntries[selectedIndex].path;
     clipCut = false;
+}
+
+void FileManager::copyToSys(ScreenInteractive &s) {
+    termCmd = FileManager::TermCmds::CopyToSys;
+    s.ExitLoopClosure()();
 }
 
 void FileManager::cut() {

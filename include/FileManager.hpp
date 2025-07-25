@@ -21,7 +21,7 @@ class FileManager {
         modalContainer = ftxui::Container::Vertical({inputBox});
     }
 
-    enum class TermCmds { None, ChangeDir, Quit, QuitToLast, Edit, Open };
+    enum class TermCmds { None, ChangeDir, Quit, QuitToLast, Edit, Open, CopyToSys };
 
     enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error, DriveSelect };
 
@@ -69,6 +69,7 @@ class FileManager {
     void toggleSelect();
     void promptModal(Modal);
     void copy();
+    void copyToSys(ftxui::ScreenInteractive &);
     void cut();
     void paste();
     void onModalSwitch();
