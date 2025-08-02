@@ -1,5 +1,4 @@
 #include "FileManager.hpp"
-#define NOMINMAX
 #include "Ui.hpp"
 #include "Utils.hpp"
 
@@ -184,7 +183,7 @@ bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::st
         std::system(("start /B explorer \"" + path + "\"").c_str());
         return false;
     case FileManager::TermCmds::CopyToSys:
-        std::system(("echo " + path + " | clip").c_str());
+        copyPathToClip(path);
         return false;
     case FileManager::TermCmds::ChangeDir:
         writeToAppDataRoamingFile(path);
