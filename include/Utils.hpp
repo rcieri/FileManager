@@ -1,16 +1,21 @@
+#ifndef UTILS_HPP_
+#define UTILS_HPP_
+
 #include <codecvt>
 #include <filesystem>
 #include <fstream>
 #include <ftxui/dom/elements.hpp>
+#include <iomanip>
 #include <regex>
 #include <shlobj.h>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <windows.h>
 
 namespace fs = std::filesystem;
 
-void writeToAppDataRoamingFile(std::string changePath) {
+inline void writeToAppDataRoamingFile(std::string changePath) {
     PWSTR path = NULL;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) {
         char buffer[MAX_PATH];
@@ -26,7 +31,7 @@ void writeToAppDataRoamingFile(std::string changePath) {
     }
 }
 
-bool copyPathToClip(const std::string &utf8Path) {
+inline bool copyPathToClip(const std::string &utf8Path) {
     // Convert std::string (UTF-8) to std::wstring (UTF-16)
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
     std::wstring widePath = converter.from_bytes(utf8Path);
@@ -64,3 +69,72 @@ bool copyPathToClip(const std::string &utf8Path) {
 
     return true;
 }
+
+inline std::string getFileTypeString(const fs::path &p) {
+    std::error_code ec;
+
+    if (!fs::exists(p, ec)) {
+        if (fs::is_symlink(p, ec))
+            return "brk"; // Broken symlink
+        return "mis";     // Missing
+    }
+
+    fs::file_status status = fs::symlink_status(p, ec);
+
+    if (status.type() == fs::file_type::regular) {
+        auto ext = p.extension().string();
+        if (ext.length() >= 2) { // at least '.' + 1 char
+            ext = ext.substr(1); // remove dot
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            if (ext.length() > 3)
+                ext = ext.substr(0, 3);
+            return ext;
+        }
+        return "non"; // No extension
+    }
+
+    switch (status.type()) {
+    case fs::file_type::directory:
+        return "dir";
+    case fs::file_type::symlink:
+        return "sym";
+    case fs::file_type::block:
+        return "blk";
+    case fs::file_type::character:
+        return "chr";
+    case fs::file_type::fifo:
+        return "fif";
+    case fs::file_type::socket:
+        return "soc";
+    case fs::file_type::unknown:
+        return "unk";
+    case fs::file_type::none:
+        return "non";
+    default:
+        return "oth";
+    }
+}
+
+inline std::string getFileSizeString(const fs::path &p) {
+    try {
+        if (fs::is_regular_file(p)) {
+            auto size = fs::file_size(p);
+            // Format size to human-readable string (e.g. KB, MB)
+            const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+            size_t unitIndex = 0;
+            double displaySize = static_cast<double>(size);
+            while (displaySize >= 1024 && unitIndex < 4) {
+                displaySize /= 1024;
+                ++unitIndex;
+            }
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1) << displaySize << " " << units[unitIndex];
+            return oss.str();
+        }
+    } catch (...) {
+        // Ignore errors like permission denied
+    }
+    return "";
+}
+
+#endif

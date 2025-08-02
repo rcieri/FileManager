@@ -60,6 +60,7 @@ class FileManager {
     void goToParent();
     void openDir();
     void toggleExpand();
+    void collapseAll();
     void editFile(ftxui::ScreenInteractive &);
     void openFile(ftxui::ScreenInteractive &);
     void quit(ftxui::ScreenInteractive &);

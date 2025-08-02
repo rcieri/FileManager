@@ -141,6 +141,8 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                 paste();
         } else if (event == Event::Return) {
             toggleExpand();
+        } else if (event == Event::Escape) {
+            collapseAll();
         }
     } catch (const std::exception &e) {
         error = "Error handling event: " + std::string(e.what());
@@ -240,6 +242,11 @@ void FileManager::toggleExpand() {
         expandedDirs.erase(p);
     else
         expandedDirs.insert(p);
+    refresh();
+}
+
+void FileManager::collapseAll() {
+    expandedDirs.clear();
     refresh();
 }
 
