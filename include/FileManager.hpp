@@ -23,7 +23,7 @@ class FileManager {
 
     enum class TermCmds { None, ChangeDir, Quit, QuitToLast, Edit, Open, CopyToSys };
 
-    enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error, DriveSelect };
+    enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error, DriveSelect, Help };
 
     struct Entry {
         fs::path path;
@@ -40,7 +40,6 @@ class FileManager {
     size_t selectedIndex = 0;
     size_t scrollOffset = 0;
     int selectedDriveIndex = 0;
-    bool _toShowHelp = false;
     TermCmds termCmd = TermCmds::None;
     Modal modal = Modal::None;
     std::optional<fs::path> clipPath;

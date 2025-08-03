@@ -27,9 +27,32 @@ Element UI::createModalBox(const Element &main_view, const std::string &title, E
 
 Element UI::createHelpOverlay(const Element &main_view) {
     std::vector<std::pair<std::string, std::string>> help_entries = {
-        {"j", "up"},      {"k", "down"},   {"l", "open"}, {"h", "back"},       {"n", "new file"},
-        {"N", "new dir"}, {"r", "rename"}, {"m", "move"}, {"d", "delete"},     {"y", "copy"},
-        {"x", "cut"},     {"p", "paste"},  {"q", "quit"}, {"?", "toggle help"}};
+        {"j", "move down"},
+        {"k", "move up"},
+        {"J", "jump down"},
+        {"K", "jump up"},
+        {"h", "go to parent"},
+        {"l", "enter dir"},
+        {"e", "edit file/dir (helix)"},
+        {"o", "open file"},
+        {"space", "toggle select"},
+        {"r", "rename"},
+        {"m", "move"},
+        {"d", "delete"},
+        {"n", "new file"},
+        {"N", "new directory"},
+        {"y", "copy"},
+        {"Y", "copy to system"},
+        {"x", "cut"},
+        {"p", "paste"},
+        {"c", "change dir"},
+        {"C", "change drive"},
+        {"Return", "expand/collapse"},
+        {"Esc", "collapse all"},
+        {"q", "quit to last"},
+        {"Ctrl+c", "quit"},
+        {"?", "show help"},
+    };
 
     Elements help_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
                                 text("  Description") | bold | color(Color::GrayLight)}),
@@ -43,8 +66,7 @@ Element UI::createHelpOverlay(const Element &main_view) {
     auto help_window =
         window(text(" Help ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
                vbox(help_rows)) |
-        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50) |
-        size(HEIGHT, LESS_THAN, 20);
+        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
 
     return dbox({main_view | dim, center(help_window)});
 }
@@ -67,6 +89,47 @@ Element UI::createDriveSelect(const Element &main_view) {
         size(WIDTH, EQUAL, 40) | size(HEIGHT, LESS_THAN, 15);
 
     return dbox({backdrop, center(drive_window)});
+}
+
+Element UI::createErrorOverlay(const Element &main_view) {
+    std::string errorMessage = _fm.error;
+
+    // Break errorMessage into lines to measure width and height dynamically
+    std::istringstream stream(errorMessage);
+    std::vector<std::string> lines;
+    std::string line;
+    size_t max_line_length = 0;
+    while (std::getline(stream, line)) {
+        lines.push_back(line);
+        max_line_length = std::max(max_line_length, line.size());
+    }
+
+    // Add some padding around the text
+    const int horizontal_padding = 4; // 2 spaces left and right
+    const int vertical_padding = 2;   // 1 line top and bottom
+    int box_width = static_cast<int>(max_line_length) + horizontal_padding;
+    int box_height =
+        static_cast<int>(lines.size()) + vertical_padding + 3; // +3 for title + separator + footer
+
+    // Create Elements for each line of the message
+    Elements message_lines;
+    for (auto &l : lines) {
+        message_lines.push_back(text(l) | color(Color::RedLight) | center);
+    }
+
+    Element backdrop = main_view | dim;
+
+    auto error_window =
+        vbox({
+            text(" ERROR ") | bold | bgcolor(Color::Red) | color(Color::White) | center,
+            separator(),
+            vbox(message_lines),
+            filler(),
+        }) |
+        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, box_width) |
+        size(HEIGHT, EQUAL, box_height) | center;
+
+    return dbox({backdrop, center(error_window)});
 }
 
 Element UI::render(ScreenInteractive &screen) {
@@ -206,10 +269,12 @@ Element UI::render(ScreenInteractive &screen) {
     }
 
     // Stack overlays
-    if (_fm._toShowHelp)
+    if (_fm.modal == FileManager::Modal::Help)
         main_view = createHelpOverlay(main_view);
-    if (_fm.modal == FileManager::Modal::DriveSelect)
+    else if (_fm.modal == FileManager::Modal::DriveSelect)
         main_view = createDriveSelect(main_view);
+    else if (_fm.modal == FileManager::Modal::Error)
+        main_view = createErrorOverlay(main_view);
     else if (_fm.modal != FileManager::Modal::None)
         main_view = createModalBox(main_view, title, body);
 

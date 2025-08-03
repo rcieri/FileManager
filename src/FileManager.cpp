@@ -86,7 +86,7 @@ std::vector<std::string> FileManager::listDrives() {
 // --- Input handling ---
 void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
     try {
-        if (modal != Modal::None && modal != Modal::Error) {
+        if (modal != Modal::None) {
             handleModalEvent(event);
             return;
         }
@@ -118,7 +118,7 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
             else if (ch == "C")
                 changeDrive(screen);
             else if (ch == "?")
-                _toShowHelp = !_toShowHelp;
+                promptModal(Modal::Help);
             else if (ch == " ")
                 toggleSelect();
             else if (ch == "r")
@@ -292,11 +292,11 @@ void FileManager::toggleSelect() {
 void FileManager::promptModal(Modal m) {
     modal = m;
     modalTarget = visibleEntries[selectedIndex].path;
-    if (m == Modal::NewFile || m == Modal::NewDir) {
+    if (modal == Modal::NewFile || modal == Modal::NewDir) {
         if (!fs::is_directory(modalTarget))
             modalTarget = modalTarget.parent_path();
         modalInput.clear();
-    } else if (m == Modal::Rename) {
+    } else if (modal == Modal::Rename) {
         modalInput = modalTarget.filename().string();
     }
 }
