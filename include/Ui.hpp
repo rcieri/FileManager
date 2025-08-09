@@ -1,5 +1,5 @@
-// Ui.hpp
-#pragma once
+#ifndef UI_HPP_
+#define UT_HPP_
 
 #include "FileManager.hpp"
 #include "Utils.hpp"
@@ -50,9 +50,12 @@ class UI {
     ftxui::Element createErrorOverlay(const ftxui::Element &main_view);
     ftxui::Element createHelpOverlay(const ftxui::Element &main_view);
     ftxui::Element createDriveSelect(const ftxui::Element &main_view);
+    ftxui::Element createHistorySelect(const ftxui::Element &main_view);
     ftxui::Element applyStyle(const fs::path &p, ftxui::Element e);
     std::string getFileIcon(const fs::path &p);
 
   private:
     const FileManager &_fm;
 };
+
+#endif

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FILEMANAGER_HPP_
+#define FILEMANAGER_HPP_
 
 #include <filesystem>
 #include <ftxui/component/component.hpp>
@@ -23,7 +24,18 @@ class FileManager {
 
     enum class TermCmds { None, ChangeDir, Quit, QuitToLast, Edit, Open, CopyToSys };
 
-    enum class Modal { None, Rename, Move, Delete, NewFile, NewDir, Error, DriveSelect, Help };
+    enum class Modal {
+        None,
+        Rename,
+        Move,
+        Delete,
+        NewFile,
+        NewDir,
+        Error,
+        DriveSelect,
+        Help,
+        History
+    };
 
     struct Entry {
         fs::path path;
@@ -36,10 +48,11 @@ class FileManager {
     std::vector<Entry> visibleEntries;
     std::set<fs::path> expandedDirs, selectedFiles;
     std::vector<std::string> drives;
-    std::unordered_map<fs::path, std::vector<std::string>> previewCache;
+    std::vector<std::string> history;
     size_t selectedIndex = 0;
     size_t scrollOffset = 0;
     int selectedDriveIndex = 0;
+    int selectedHistoryIndex = 0;
     TermCmds termCmd = TermCmds::None;
     Modal modal = Modal::None;
     std::optional<fs::path> clipPath;
@@ -50,6 +63,7 @@ class FileManager {
     void refresh();
     void buildTree(const fs::path &, int);
     std::vector<std::string> listDrives();
+    std::vector<std::string> listHistory();
 
     // Input handlers
     void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
@@ -66,11 +80,13 @@ class FileManager {
     void quitToLast(ftxui::ScreenInteractive &);
     void changeDir(ftxui::ScreenInteractive &);
     void changeDrive(ftxui::ScreenInteractive &);
+    void changeDirFromHistory(ftxui::ScreenInteractive &);
     void toggleSelect();
     void promptModal(Modal);
     void copy();
     void copyToSys(ftxui::ScreenInteractive &);
     void cut();
     void paste();
-    void onModalSwitch();
 };
+
+#endif

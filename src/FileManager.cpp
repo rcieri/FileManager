@@ -83,6 +83,37 @@ std::vector<std::string> FileManager::listDrives() {
     return drives;
 }
 
+std::vector<std::string> FileManager::listHistory() {
+    std::vector<std::string> history;
+
+    // Get AppData\Roaming\FileManager directory
+    PWSTR path = NULL;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) {
+        return history; // empty if fail
+    }
+
+    char buffer[MAX_PATH];
+    size_t convertedChars = 0;
+    wcstombs_s(&convertedChars, buffer, MAX_PATH, path, MAX_PATH - 1);
+    CoTaskMemFree(path);
+
+    std::string appDataDir = std::string(buffer) + "\\FileManager";
+    std::string historyFile = appDataDir + "\\history.txt";
+
+    std::ifstream inFile(historyFile);
+    if (!inFile.is_open()) {
+        return history; // empty if file missing
+    }
+
+    std::string line;
+    while (std::getline(inFile, line)) {
+        if (!line.empty())
+            history.push_back(line);
+    }
+
+    return history;
+}
+
 // --- Input handling ---
 void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
     try {
@@ -143,6 +174,8 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
             toggleExpand();
         } else if (event == Event::Escape) {
             collapseAll();
+        } else if (event == Event::ArrowUp) {
+            changeDirFromHistory(screen);
         }
     } catch (const std::exception &e) {
         error = "Error handling event: " + std::string(e.what());
@@ -151,10 +184,11 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
 }
 
 void FileManager::handleModalEvent(Event event) {
-    if (modal == Modal::DriveSelect) {
-        if (event == Event::ArrowUp || event == Event::Character("k"))
+    switch (modal) {
+    case Modal::DriveSelect:
+        if (event == Event::Character("k"))
             selectedDriveIndex = (selectedDriveIndex - 1 + drives.size()) % drives.size();
-        else if (event == Event::ArrowDown || event == Event::Character("j"))
+        else if (event == Event::Character("j"))
             selectedDriveIndex = (selectedDriveIndex + 1) % drives.size();
         else if (event == Event::Return) {
             rootPath = fs::path(drives[selectedDriveIndex]);
@@ -165,15 +199,94 @@ void FileManager::handleModalEvent(Event event) {
         } else if (event == Event::Escape) {
             modal = Modal::None;
         }
-        return;
-    }
+        break;
 
-    if (event == Event::Return)
-        onModalSwitch();
-    else if (event == Event::Escape)
-        modal = Modal::None;
-    else
-        modalContainer->OnEvent(event);
+    case Modal::History:
+        if (event == Event::Character("k"))
+            selectedHistoryIndex = (selectedHistoryIndex - 1 + history.size()) % history.size();
+        else if (event == Event::Character("j"))
+            selectedHistoryIndex = (selectedHistoryIndex + 1) % history.size();
+        else if (event == Event::Return) {
+            rootPath = fs::path(history[selectedHistoryIndex]);
+            expandedDirs.clear();
+            expandedDirs.insert(rootPath);
+            refresh();
+            modal = Modal::None;
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        }
+        break;
+
+    case Modal::Rename:
+        if (event == Event::Return) {
+            fs::rename(modalTarget, modalTarget.parent_path() / modalInput);
+            modal = Modal::None;
+            refresh();
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        } else {
+            modalContainer->OnEvent(event);
+        }
+        break;
+
+    case Modal::Move:
+        if (event == Event::Return) {
+            fs::rename(modalTarget, fs::path(modalInput) / modalTarget.filename());
+            modal = Modal::None;
+            refresh();
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        } else {
+            modalContainer->OnEvent(event);
+        }
+        break;
+
+    case Modal::Delete:
+        if (event == Event::Return) {
+            if (fs::is_directory(modalTarget))
+                fs::remove_all(modalTarget);
+            else
+                fs::remove(modalTarget);
+            modal = Modal::None;
+            refresh();
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        } else {
+            modalContainer->OnEvent(event);
+        }
+        break;
+
+    case Modal::NewFile:
+        if (event == Event::Return) {
+            std::ofstream((modalTarget / modalInput).string());
+            modal = Modal::None;
+            refresh();
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        } else {
+            modalContainer->OnEvent(event);
+        }
+        break;
+
+    case Modal::NewDir:
+        if (event == Event::Return) {
+            fs::create_directory(modalTarget / modalInput);
+            modal = Modal::None;
+            refresh();
+        } else if (event == Event::Escape) {
+            modal = Modal::None;
+        } else {
+            modalContainer->OnEvent(event);
+        }
+        break;
+
+    default:
+        if (event == Event::Return || event == Event::Escape)
+            modal = Modal::None;
+        else
+            modalContainer->OnEvent(event);
+        break;
+    }
 }
 
 bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::string path) {
@@ -281,6 +394,13 @@ void FileManager::changeDrive(ScreenInteractive &) {
     modal = Modal::DriveSelect;
 }
 
+void FileManager::changeDirFromHistory(ScreenInteractive &) {
+    history = listHistory();
+    std::cout << history[1] << std::endl;
+    selectedHistoryIndex = 0;
+    modal = Modal::History;
+}
+
 void FileManager::toggleSelect() {
     auto p = visibleEntries[selectedIndex].path;
     if (selectedFiles.count(p))
@@ -327,32 +447,5 @@ void FileManager::paste() {
     else
         fs::copy_file(*clipPath, dest);
     clipPath.reset();
-    refresh();
-}
-
-void FileManager::onModalSwitch() {
-    switch (modal) {
-    case Modal::Rename:
-        fs::rename(modalTarget, modalTarget.parent_path() / modalInput);
-        break;
-    case Modal::Move:
-        fs::rename(modalTarget, fs::path(modalInput) / modalTarget.filename());
-        break;
-    case Modal::Delete:
-        if (fs::is_directory(modalTarget))
-            fs::remove_all(modalTarget);
-        else
-            fs::remove(modalTarget);
-        break;
-    case Modal::NewFile:
-        std::ofstream((modalTarget / modalInput).string());
-        break;
-    case Modal::NewDir:
-        fs::create_directory(modalTarget / modalInput);
-        break;
-    default:
-        break;
-    }
-    modal = Modal::None;
     refresh();
 }

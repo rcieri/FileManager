@@ -50,6 +50,7 @@ Element UI::createHelpOverlay(const Element &main_view) {
         {"Return", "expand/collapse"},
         {"Esc", "collapse all"},
         {"q", "quit to last"},
+        {"^", "history"},
         {"Ctrl+c", "quit"},
         {"?", "show help"},
     };
@@ -89,6 +90,26 @@ Element UI::createDriveSelect(const Element &main_view) {
         size(WIDTH, EQUAL, 40) | size(HEIGHT, LESS_THAN, 15);
 
     return dbox({backdrop, center(drive_window)});
+}
+
+Element UI::createHistorySelect(const Element &main_view) {
+    Element backdrop = main_view | dim;
+
+    Elements history_rows;
+    for (size_t i = 0; i < _fm.history.size(); ++i) {
+        auto h = text(" " + _fm.history[i] + " ");
+        if (i == _fm.selectedHistoryIndex) {
+            h = h | bgcolor(Color::BlueLight) | color(Color::Black) | bold;
+        }
+        history_rows.push_back(h);
+    }
+
+    auto history_window =
+        window(text(" History ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
+               vbox(history_rows)) |
+        size(WIDTH, EQUAL, 60) | size(HEIGHT, LESS_THAN, 15);
+
+    return dbox({backdrop, center(history_window)});
 }
 
 Element UI::createErrorOverlay(const Element &main_view) {
@@ -229,6 +250,8 @@ Element UI::render(ScreenInteractive &screen) {
         main_view = createHelpOverlay(main_view);
     else if (_fm.modal == FileManager::Modal::DriveSelect)
         main_view = createDriveSelect(main_view);
+    else if (_fm.modal == FileManager::Modal::History)
+        main_view = createHistorySelect(main_view);
     else if (_fm.modal == FileManager::Modal::Error)
         main_view = createErrorOverlay(main_view);
     else if (_fm.modal != FileManager::Modal::None)

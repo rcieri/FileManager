@@ -17,20 +17,25 @@
 
 namespace fs = std::filesystem;
 
-inline void writeToAppDataRoamingFile(std::string changePath) {
-    PWSTR path = NULL;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) {
-        char buffer[MAX_PATH];
-        size_t convertedChars = 0;
-        wcstombs_s(&convertedChars, buffer, MAX_PATH, path, MAX_PATH - 1);
-        CoTaskMemFree(path);
-        std::string appDataDir = std::string(buffer) + "\\FileManager";
-        fs::create_directories(appDataDir);
-        std::string filePath = appDataDir + "\\fm.txt";
-        std::ofstream outFile(filePath);
-        outFile << changePath;
-        outFile.close();
-    }
+inline void writeToAppDataRoamingFile(const std::string &changePath) {
+    static std::string appDataDir = [] {
+        PWSTR path = NULL;
+        std::string result;
+        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) {
+            char buffer[MAX_PATH];
+            size_t convertedChars = 0;
+            wcstombs_s(&convertedChars, buffer, MAX_PATH, path, MAX_PATH - 1);
+            CoTaskMemFree(path);
+            result = std::string(buffer) + "\\FileManager";
+            fs::create_directories(result);
+        }
+        return result;
+    }();
+
+    const std::string historyFile = appDataDir + "\\history.txt";
+
+    std::ofstream outFile(historyFile, std::ios::app);
+    outFile << changePath << '\n';
 }
 
 inline bool copyPathToClip(const std::string &utf8Path) {
