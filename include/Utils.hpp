@@ -47,8 +47,7 @@ inline bool copyPathToClip(const std::string &utf8Path) {
                        (widePath.length() + 2) * sizeof(wchar_t); // +1 for null, +1 for double-null
 
     HGLOBAL hGlobal = GlobalAlloc(GHND | GMEM_SHARE, totalSize);
-    if (!hGlobal)
-        return false;
+    if (!hGlobal) return false;
 
     DROPFILES *df = static_cast<DROPFILES *>(GlobalLock(hGlobal));
     if (!df) {
@@ -81,9 +80,8 @@ inline std::string getFileTypeString(const fs::path &p) {
     std::error_code ec;
 
     if (!fs::exists(p, ec)) {
-        if (fs::is_symlink(p, ec))
-            return "brk"; // Broken symlink
-        return "mis";     // Missing
+        if (fs::is_symlink(p, ec)) return "brk"; // Broken symlink
+        return "mis";                            // Missing
     }
 
     fs::file_status status = fs::symlink_status(p, ec);
@@ -93,32 +91,22 @@ inline std::string getFileTypeString(const fs::path &p) {
         if (ext.length() >= 2) { // at least '.' + 1 char
             ext = ext.substr(1); // remove dot
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            if (ext.length() > 3)
-                ext = ext.substr(0, 3);
+            if (ext.length() > 3) ext = ext.substr(0, 3);
             return ext;
         }
         return "non"; // No extension
     }
 
     switch (status.type()) {
-    case fs::file_type::directory:
-        return "dir";
-    case fs::file_type::symlink:
-        return "sym";
-    case fs::file_type::block:
-        return "blk";
-    case fs::file_type::character:
-        return "chr";
-    case fs::file_type::fifo:
-        return "fif";
-    case fs::file_type::socket:
-        return "soc";
-    case fs::file_type::unknown:
-        return "unk";
-    case fs::file_type::none:
-        return "non";
-    default:
-        return "oth";
+    case fs::file_type::directory: return "dir";
+    case fs::file_type::symlink: return "sym";
+    case fs::file_type::block: return "blk";
+    case fs::file_type::character: return "chr";
+    case fs::file_type::fifo: return "fif";
+    case fs::file_type::socket: return "soc";
+    case fs::file_type::unknown: return "unk";
+    case fs::file_type::none: return "non";
+    default: return "oth";
     }
 }
 

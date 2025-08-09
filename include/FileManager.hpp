@@ -22,7 +22,15 @@ class FileManager {
         modalContainer = ftxui::Container::Vertical({inputBox});
     }
 
-    enum class TermCmds { None, ChangeDir, Quit, QuitToLast, Edit, Open, CopyToSys };
+    enum class TermCmds {
+        None,
+        ChangeDir,
+        Quit,
+        QuitToLast,
+        Edit,
+        Open,
+        CopyToSys
+    };
 
     enum class Modal {
         None,

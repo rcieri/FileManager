@@ -5,3 +5,11 @@ TabWidth: 4
 UseTab: Never
 BreakBeforeBraces: Attach  # Or Allman/Stroustrup if you prefer
 ColumnLimit: 100
+BraceWrapping:
+  AfterControlStatement: Never
+AllowShortFunctionsOnASingleLine: All
+AllowShortLoopsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: false
