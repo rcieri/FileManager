@@ -1,3 +1,6 @@
 [submodule "FTXUI"]
 	path = FTXUI
 	url = https://github.com/arthurSonzogni/FTXUI.git
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json
