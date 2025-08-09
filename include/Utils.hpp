@@ -8,14 +8,19 @@
 #include <fstream>
 #include <ftxui/dom/elements.hpp>
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <regex>
 #include <shlobj.h>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <windows.h>
 
 namespace fs = std::filesystem;
+
+namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 inline void writeToAppDataRoamingFile(const std::string &changePath) {
     static std::string appDataDir = [] {
@@ -33,9 +38,33 @@ inline void writeToAppDataRoamingFile(const std::string &changePath) {
     }();
 
     const std::string historyFile = appDataDir + "\\history.txt";
+    const std::string historyJsonFile = appDataDir + "\\history.json";
 
-    std::ofstream outFile(historyFile, std::ios::app);
-    outFile << changePath << '\n';
+    {
+        std::ofstream outFile(historyFile);
+        outFile << changePath;
+    }
+
+    json historyData;
+
+    if (fs::exists(historyJsonFile)) {
+        std::ifstream inJson(historyJsonFile);
+        try {
+            inJson >> historyData;
+        } catch (...) { historyData = json::object(); }
+    }
+
+    if (!historyData.is_object()) historyData = json::object();
+
+    if (historyData.contains(changePath))
+        historyData[changePath] = historyData[changePath].get<int>() + 1;
+    else
+        historyData[changePath] = 1;
+
+    {
+        std::ofstream outJson(historyJsonFile);
+        outJson << historyData.dump(4);
+    }
 }
 
 inline bool copyPathToClip(const std::string &utf8Path) {

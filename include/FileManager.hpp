@@ -20,6 +20,7 @@ class FileManager {
         refresh();
         inputBox = ftxui::Input(&modalInput, "");
         modalContainer = ftxui::Container::Vertical({inputBox});
+        history = listHistory();
     }
 
     enum class TermCmds {
@@ -55,15 +56,14 @@ class FileManager {
     ftxui::Component inputBox, modalContainer;
     std::vector<Entry> visibleEntries;
     std::set<fs::path> expandedDirs, selectedFiles;
-    std::vector<std::string> drives;
-    std::vector<std::string> history;
+    std::vector<std::string> drives, history;
     size_t selectedIndex = 0;
     size_t scrollOffset = 0;
     int selectedDriveIndex = 0;
     int selectedHistoryIndex = 0;
     TermCmds termCmd = TermCmds::None;
     Modal modal = Modal::None;
-    std::optional<fs::path> clipPath;
+    std::optional<fs::path> copyPath, cutPath;
     bool clipCut = false;
 
     // Core methods
