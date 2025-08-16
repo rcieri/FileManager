@@ -8,7 +8,114 @@
 using namespace ftxui;
 
 // --- UI ---
-Element UI::createModalBox(const Element &main_view, const std::string &title, Element body) {
+Element UI::render(ScreenInteractive &screen) {
+    Elements rows;
+    Layout layout = Layout::compute(screen.dimx());
+
+    // Header row
+    rows.push_back(hbox({
+        text("NAME") | bold | size(WIDTH, LESS_THAN, layout.max_name_width),
+        text("   "),
+        text(std::string(layout.max_indent_width, ' ')),
+        text(std::string(layout.spacer_width, ' ')),
+        text("TYPE") | bold | size(WIDTH, EQUAL, layout.type_col_width),
+        text(std::string(layout.spacing, ' ')),
+        text("SIZE") | bold | size(WIDTH, EQUAL, layout.size_col_width),
+    }));
+    rows.push_back(hbox({text(std::string(layout.total_width, '-'))}));
+
+    // File list rows
+    size_t max_height = screen.dimy() - 3;
+    size_t start = _fm.scrollOffset;
+    size_t end = std::min(_fm.scrollOffset + max_height, _fm.visibleEntries.size());
+
+    for (size_t i = start; i < end; ++i) {
+        auto [p, depth] = _fm.visibleEntries[i];
+        bool isDir = fs::is_directory(p);
+        auto icon = text(isDir ? (_fm.expandedDirs.count(p) ? "📂 " : "📁 ") : UI::getFileIcon(p));
+        Element name = UI::applyStyle(p, text(p.filename().string()));
+        if (_fm.selItems.count(p)) name = name | bgcolor(Color::BlueLight);
+
+        auto typeStr = getFileTypeString(p);
+        auto sizeStr = getFileSizeString(p);
+
+        int indent_spaces = std::min(depth * layout.indent_per_level, layout.max_indent_width);
+        int icon_and_indent_width = indent_spaces + layout.icon_width;
+        int actual_name_len = std::min((int)p.filename().string().length(), layout.max_name_width);
+        int name_block_width = icon_and_indent_width + actual_name_len;
+        int spacer_width = std::max(layout.type_column - name_block_width, 1);
+
+        auto line = hbox({
+            text(std::string(indent_spaces, ' ')),
+            icon,
+            name | size(WIDTH, LESS_THAN, layout.max_name_width),
+            text(std::string(spacer_width, ' ')),
+            text(typeStr) | dim | size(WIDTH, EQUAL, layout.type_col_width),
+            text(std::string(layout.spacing, ' ')),
+            text(sizeStr) | dim | size(WIDTH, EQUAL, layout.size_col_width),
+        });
+
+        if (i == _fm.selIdx) line = line | inverted;
+
+        rows.push_back(line);
+    }
+
+    // File list box
+    Element fileList = vbox({
+        text("Current Directory: " + _fm.cwd.string()) | bold | color(Color::Yellow),
+        separator(),
+        vbox(rows) | flex | frame | borderRounded | bgcolor(Color::Black),
+    });
+
+    Element main_view = hbox({fileList | flex}) | size(HEIGHT, EQUAL, screen.dimy());
+
+    std::string title;
+    Element body;
+    if (_fm.prompt != FileManager::Prompt::None) {
+        switch (_fm.prompt) {
+        case FileManager::Prompt::Rename:
+            title = "Rename to:";
+            body = _fm.inputBox->Render();
+            break;
+        case FileManager::Prompt::Move:
+            title = "Move to folder:";
+            body = _fm.inputBox->Render();
+            break;
+        case FileManager::Prompt::NewFile:
+            title = "New file name:";
+            body = _fm.inputBox->Render();
+            break;
+        case FileManager::Prompt::NewDir:
+            title = "New directory name:";
+            body = _fm.inputBox->Render();
+            break;
+        case FileManager::Prompt::Delete:
+            title = "Delete?";
+            body = hbox({text(_fm.promptPath.filename().string()) | bold | bgcolor(Color::Red)});
+        case FileManager::Prompt::Replace:
+            title = "Replace Existing File/Dir?";
+            body = hbox({text(_fm.promptPath.filename().string()) | bold});
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (_fm.prompt == FileManager::Prompt::Help)
+        main_view = createHelpOverlay(main_view);
+    else if (_fm.prompt == FileManager::Prompt::DriveSelect)
+        main_view = createDriveSelect(main_view);
+    else if (_fm.prompt == FileManager::Prompt::History)
+        main_view = createHistorySelect(main_view);
+    else if (_fm.prompt == FileManager::Prompt::Error)
+        main_view = createErrorOverlay(main_view);
+    else if (_fm.prompt != FileManager::Prompt::None)
+        main_view = createPromptBox(main_view, title, body);
+
+    return main_view;
+}
+
+Element UI::createPromptBox(const Element &main_view, const std::string &title, Element body) {
     Element backdrop = main_view | dim;
 
     Element padded_body = vbox({
@@ -17,59 +124,12 @@ Element UI::createModalBox(const Element &main_view, const std::string &title, E
         filler(),
     });
 
-    auto modal_window =
+    auto prompt_window =
         window(text(" " + title + " ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
                body) |
         size(WIDTH, EQUAL, 60) | size(HEIGHT, LESS_THAN, 15);
 
-    return dbox({backdrop, center(modal_window)});
-}
-
-Element UI::createHelpOverlay(const Element &main_view) {
-    std::vector<std::pair<std::string, std::string>> help_entries = {
-        {"j", "move down"},
-        {"k", "move up"},
-        {"J", "jump down"},
-        {"K", "jump up"},
-        {"h", "go to parent"},
-        {"l", "enter dir"},
-        {"e", "edit file/dir (helix)"},
-        {"o", "open file"},
-        {"space", "toggle select"},
-        {"r", "rename"},
-        {"m", "move"},
-        {"d", "delete"},
-        {"n", "new file"},
-        {"N", "new directory"},
-        {"y", "copy"},
-        {"Y", "copy to system"},
-        {"x", "cut"},
-        {"p", "paste"},
-        {"c", "change dir"},
-        {"C", "change drive"},
-        {"Return", "expand/collapse"},
-        {"Esc", "collapse all"},
-        {"q", "quit to last"},
-        {"^", "history"},
-        {"Ctrl+c", "quit"},
-        {"?", "show help"},
-    };
-
-    Elements help_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
-                                text("  Description") | bold | color(Color::GrayLight)}),
-                          separator()};
-
-    for (auto &[key, desc] : help_entries) {
-        help_rows.push_back(hbox(
-            {text(" " + key) | color(Color::Cyan), filler(), text(desc) | color(Color::White)}));
-    }
-
-    auto help_window =
-        window(text(" Help ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
-               vbox(help_rows)) |
-        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
-
-    return dbox({main_view | dim, center(help_window)});
+    return dbox({backdrop, center(prompt_window)});
 }
 
 Element UI::createDriveSelect(const Element &main_view) {
@@ -78,7 +138,7 @@ Element UI::createDriveSelect(const Element &main_view) {
     Elements drive_rows;
     for (size_t i = 0; i < _fm.drives.size(); ++i) {
         auto drive = text(" " + _fm.drives[i] + " ");
-        if (i == _fm.selectedDriveIndex) {
+        if (i == _fm.selDriveIdx) {
             drive = drive | bgcolor(Color::BlueLight) | color(Color::Black) | bold;
         }
         drive_rows.push_back(drive);
@@ -98,9 +158,7 @@ Element UI::createHistorySelect(const Element &main_view) {
     Elements history_rows;
     for (size_t i = 0; i < _fm.history.size(); ++i) {
         auto h = text(" " + _fm.history[i] + " ");
-        if (i == _fm.selectedHistoryIndex) {
-            h = h | bgcolor(Color::BlueLight) | color(Color::Black) | bold;
-        }
+        if (i == _fm.selHistIdx) { h = h | bgcolor(Color::BlueLight) | color(Color::Black) | bold; }
         history_rows.push_back(h);
     }
 
@@ -148,111 +206,51 @@ Element UI::createErrorOverlay(const Element &main_view) {
     return dbox({backdrop, center(error_window)});
 }
 
-Element UI::render(ScreenInteractive &screen) {
-    Elements rows;
-    Layout layout = Layout::compute(screen.dimx());
+Element UI::createHelpOverlay(const Element &main_view) {
+    std::vector<std::pair<std::string, std::string>> help_entries = {
+        {"j", "move down"},
+        {"k", "move up"},
+        {"J", "jump down"},
+        {"K", "jump up"},
+        {"h", "go to parent"},
+        {"l", "enter dir"},
+        {"e", "edit file/dir (helix)"},
+        {"o", "open file"},
+        {"space", "run from term "},
+        {"r", "rename"},
+        {"m", "move"},
+        {"d", "delete"},
+        {"n", "new file"},
+        {"N", "new directory"},
+        {"y", "copy"},
+        {"Y", "copy to system"},
+        {"x", "cut"},
+        {"p", "paste"},
+        {"c", "change dir"},
+        {"C", "change drive"},
+        {"Return", "expand/collapse"},
+        {"Esc", "collapse all"},
+        {"q", "quit to last"},
+        {"^", "history"},
+        {"Ctrl+c", "quit"},
+        {"?", "show help"},
+    };
 
-    // Header row
-    rows.push_back(hbox({
-        text("NAME") | bold | size(WIDTH, LESS_THAN, layout.max_name_width),
-        text("   "),
-        text(std::string(layout.max_indent_width, ' ')),
-        text(std::string(layout.spacer_width, ' ')),
-        text("TYPE") | bold | size(WIDTH, EQUAL, layout.type_col_width),
-        text(std::string(layout.spacing, ' ')),
-        text("SIZE") | bold | size(WIDTH, EQUAL, layout.size_col_width),
-    }));
-    rows.push_back(hbox({text(std::string(layout.total_width, '-'))}));
+    Elements help_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
+                                text("  Description") | bold | color(Color::GrayLight)}),
+                          separator()};
 
-    // File list rows
-    size_t max_height = screen.dimy() - 3;
-    size_t start = _fm.scrollOffset;
-    size_t end = std::min(_fm.scrollOffset + max_height, _fm.visibleEntries.size());
-
-    for (size_t i = start; i < end; ++i) {
-        auto [p, depth] = _fm.visibleEntries[i];
-        bool isDir = fs::is_directory(p);
-        auto icon = text(isDir ? (_fm.expandedDirs.count(p) ? "📂 " : "📁 ") : UI::getFileIcon(p));
-        Element name = UI::applyStyle(p, text(p.filename().string()));
-        if (_fm.selectedFiles.count(p)) name = name | bgcolor(Color::BlueLight);
-
-        auto typeStr = getFileTypeString(p);
-        auto sizeStr = getFileSizeString(p);
-
-        int indent_spaces = std::min(depth * layout.indent_per_level, layout.max_indent_width);
-        int icon_and_indent_width = indent_spaces + layout.icon_width;
-        int actual_name_len = std::min((int)p.filename().string().length(), layout.max_name_width);
-        int name_block_width = icon_and_indent_width + actual_name_len;
-        int spacer_width = std::max(layout.type_column - name_block_width, 1);
-
-        auto line = hbox({
-            text(std::string(indent_spaces, ' ')),
-            icon,
-            name | size(WIDTH, LESS_THAN, layout.max_name_width),
-            text(std::string(spacer_width, ' ')),
-            text(typeStr) | dim | size(WIDTH, EQUAL, layout.type_col_width),
-            text(std::string(layout.spacing, ' ')),
-            text(sizeStr) | dim | size(WIDTH, EQUAL, layout.size_col_width),
-        });
-
-        if (i == _fm.selectedIndex) line = line | inverted;
-
-        rows.push_back(line);
+    for (auto &[key, desc] : help_entries) {
+        help_rows.push_back(hbox(
+            {text(" " + key) | color(Color::Cyan), filler(), text(desc) | color(Color::White)}));
     }
 
-    // File list box
-    Element fileList = vbox({
-        text("Current Directory: " + _fm.rootPath.string()) | bold | color(Color::Yellow),
-        separator(),
-        vbox(rows) | flex | frame | borderRounded | bgcolor(Color::Black),
-    });
+    auto help_window =
+        window(text(" Help ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
+               vbox(help_rows)) |
+        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
 
-    Element main_view = hbox({fileList | flex}) | size(HEIGHT, EQUAL, screen.dimy());
-
-    // Modal stack
-    std::string title;
-    Element body;
-    if (_fm.modal != FileManager::Modal::None && _fm.modal != FileManager::Modal::DriveSelect) {
-        switch (_fm.modal) {
-        case FileManager::Modal::Rename:
-            title = "Rename to:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Modal::Move:
-            title = "Move to folder:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Modal::NewFile:
-            title = "New file name:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Modal::NewDir:
-            title = "New directory name:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Modal::Delete:
-            title = "Delete";
-            body = hbox({
-                text("Delete ") | bold | bgcolor(Color::Red),
-                text(_fm.modalTarget.filename().string()) | bold | bgcolor(Color::Red),
-            });
-            break;
-        default: break;
-        }
-    }
-
-    if (_fm.modal == FileManager::Modal::Help)
-        main_view = createHelpOverlay(main_view);
-    else if (_fm.modal == FileManager::Modal::DriveSelect)
-        main_view = createDriveSelect(main_view);
-    else if (_fm.modal == FileManager::Modal::History)
-        main_view = createHistorySelect(main_view);
-    else if (_fm.modal == FileManager::Modal::Error)
-        main_view = createErrorOverlay(main_view);
-    else if (_fm.modal != FileManager::Modal::None)
-        main_view = createModalBox(main_view, title, body);
-
-    return main_view;
+    return dbox({main_view | dim, center(help_window)});
 }
 
 std::string UI::getFileIcon(const fs::path &p) {

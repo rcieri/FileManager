@@ -27,7 +27,7 @@ int FileManager::Run() {
             return true;
         });
         screen.Loop(interactive);
-        if (handleTermCommand(termCmd, visibleEntries[selectedIndex].path.string())) {
+        if (handleTermCmd(termCmd, visibleEntries[selIdx].path.string())) {
             break;
         } else {
             termCmd = FileManager::TermCmds::None;
@@ -39,8 +39,8 @@ int FileManager::Run() {
 
 void FileManager::refresh() {
     visibleEntries.clear();
-    buildTree(rootPath, 0);
-    if (!visibleEntries.empty()) selectedIndex = std::min(selectedIndex, visibleEntries.size() - 1);
+    buildTree(cwd, 0);
+    if (!visibleEntries.empty()) selIdx = std::min(selIdx, visibleEntries.size() - 1);
 }
 
 void FileManager::buildTree(const fs::path &path, int depth) {
@@ -119,8 +119,8 @@ std::vector<std::string> FileManager::listHistory() {
 // --- Input handling ---
 void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
     try {
-        if (modal != Modal::None) {
-            handleModalEvent(event);
+        if (prompt != Prompt::None) {
+            handlePromptEvent(event);
             return;
         }
 
@@ -128,30 +128,77 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
             const std::string &ch = event.character();
             if (ch.size() == 1) {
                 switch (ch[0]) {
-                case 'j': moveSelection(1, screen); break;
-                case 'k': moveSelection(-1, screen); break;
-                case 'J': moveSelection(4, screen); break;
-                case 'K': moveSelection(-4, screen); break;
-                case 'h': goToParent(); break;
-                case 'l': openDir(); break;
-                case 'e': editFile(screen); break;
-                case 'o': openFile(screen); break;
-                case '\x03': quit(screen); break;
-                case 'q': quitToLast(screen); break;
-                case 'c': changeDir(screen); break;
-                case 'C': changeDrive(screen); break;
-                case '?': promptModal(Modal::Help); break;
-                case ' ': toggleSelect(); break;
-                case 'r': promptModal(Modal::Rename); break;
-                case 'm': promptModal(Modal::Move); break;
-                case 'd': promptModal(Modal::Delete); break;
-                case 'n': promptModal(Modal::NewFile); break;
-                case 'N': promptModal(Modal::NewDir); break;
-                case 'y': copy(); break;
-                case 'Y': copyToSys(screen); break;
-                case 'x': cut(); break;
-                case 'p': paste(); break;
-                default: break;
+                case 'j':
+                    moveSelection(1, screen);
+                    break;
+                case 'k':
+                    moveSelection(-1, screen);
+                    break;
+                case 'J':
+                    moveSelection(4, screen);
+                    break;
+                case 'K':
+                    moveSelection(-4, screen);
+                    break;
+                case 'h':
+                    goToParent();
+                    break;
+                case 'l':
+                    openDir();
+                    break;
+                case 'e':
+                    editFile(screen);
+                    break;
+                case 'o':
+                    openFile(screen);
+                    break;
+                case '\x03':
+                    quit(screen);
+                    break;
+                case 'q':
+                    quitToLast(screen);
+                    break;
+                case 'c':
+                    changeDir(screen);
+                    break;
+                case 'C':
+                    changeDrive(screen);
+                    break;
+                case '?':
+                    promptUser(Prompt::Help);
+                    break;
+                case ' ':
+                    runFile(screen);
+                    break;
+                case 'r':
+                    promptUser(Prompt::Rename);
+                    break;
+                case 'm':
+                    promptUser(Prompt::Move);
+                    break;
+                case 'd':
+                    promptUser(Prompt::Delete);
+                    break;
+                case 'n':
+                    promptUser(Prompt::NewFile);
+                    break;
+                case 'N':
+                    promptUser(Prompt::NewDir);
+                    break;
+                case 'y':
+                    copy();
+                    break;
+                case 'Y':
+                    copyToSys(screen);
+                    break;
+                case 'x':
+                    cut();
+                    break;
+                case 'p':
+                    if (std::optional<Prompt> result = tryPaste()) { promptUser(*result); }
+                    break;
+                default:
+                    break;
                 }
             }
         } else if (event == Event::Return) {
@@ -163,127 +210,150 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
         }
     } catch (const std::exception &e) {
         error = "Error handling event: " + std::string(e.what());
-        modal = Modal::Error;
+        prompt = Prompt::Error;
     }
 }
 
-void FileManager::handleModalEvent(Event event) {
-    switch (modal) {
-    case Modal::DriveSelect:
+void FileManager::handlePromptEvent(Event event) {
+    switch (prompt) {
+    case Prompt::DriveSelect:
         if (event == Event::Character("k"))
-            selectedDriveIndex = (selectedDriveIndex - 1 + drives.size()) % drives.size();
+            selDriveIdx = (selDriveIdx - 1 + drives.size()) % drives.size();
         else if (event == Event::Character("j"))
-            selectedDriveIndex = (selectedDriveIndex + 1) % drives.size();
+            selDriveIdx = (selDriveIdx + 1) % drives.size();
         else if (event == Event::Return) {
-            rootPath = fs::path(drives[selectedDriveIndex]);
+            cwd = fs::path(drives[selDriveIdx]);
             expandedDirs.clear();
-            expandedDirs.insert(rootPath);
+            expandedDirs.insert(cwd);
             refresh();
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         }
         break;
 
-    case Modal::History:
+    case Prompt::History:
         if (event == Event::Character("k"))
-            selectedHistoryIndex = (selectedHistoryIndex - 1 + history.size()) % history.size();
+            selHistIdx = (selHistIdx - 1 + history.size()) % history.size();
         else if (event == Event::Character("j"))
-            selectedHistoryIndex = (selectedHistoryIndex + 1) % history.size();
+            selHistIdx = (selHistIdx + 1) % history.size();
         else if (event == Event::Return) {
-            rootPath = fs::path(history[selectedHistoryIndex]);
+            cwd = fs::path(history[selHistIdx]);
             expandedDirs.clear();
-            expandedDirs.insert(rootPath);
+            expandedDirs.insert(cwd);
             refresh();
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         }
         break;
 
-    case Modal::Rename:
+    case Prompt::Rename:
         if (event == Event::Return) {
-            fs::rename(modalTarget, modalTarget.parent_path() / modalInput);
-            modal = Modal::None;
+            fs::rename(promptPath, promptPath.parent_path() / promptInput);
+            prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else {
-            modalContainer->OnEvent(event);
+            promptContainer->OnEvent(event);
         }
         break;
 
-    case Modal::Move:
+    case Prompt::Move:
         if (event == Event::Return) {
-            fs::rename(modalTarget, fs::path(modalInput) / modalTarget.filename());
-            modal = Modal::None;
+            fs::rename(promptPath, fs::path(promptInput) / promptPath.filename());
+            prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else {
-            modalContainer->OnEvent(event);
+            promptContainer->OnEvent(event);
         }
         break;
 
-    case Modal::Delete:
+    case Prompt::Delete:
         if (event == Event::Return) {
-            if (fs::is_directory(modalTarget))
-                fs::remove_all(modalTarget);
-            else
-                fs::remove(modalTarget);
-            modal = Modal::None;
+            deleteFilOrDir(promptPath);
+            prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else {
-            modalContainer->OnEvent(event);
+            promptContainer->OnEvent(event);
         }
         break;
 
-    case Modal::NewFile:
+    case Prompt::Replace:
         if (event == Event::Return) {
-            std::ofstream((modalTarget / modalInput).string());
-            modal = Modal::None;
+            deleteFilOrDir(promptPath);
+            tryPaste();
+            prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else {
-            modalContainer->OnEvent(event);
+            promptContainer->OnEvent(event);
         }
         break;
 
-    case Modal::NewDir:
+    case Prompt::NewFile:
         if (event == Event::Return) {
-            fs::create_directory(modalTarget / modalInput);
-            modal = Modal::None;
+            std::ofstream((promptPath / promptInput).string());
+            prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
-            modal = Modal::None;
+            prompt = Prompt::None;
         } else {
-            modalContainer->OnEvent(event);
+            promptContainer->OnEvent(event);
+        }
+        break;
+
+    case Prompt::NewDir:
+        if (event == Event::Return) {
+            fs::create_directory(promptPath / promptInput);
+            prompt = Prompt::None;
+            refresh();
+        } else if (event == Event::Escape) {
+            prompt = Prompt::None;
+        } else {
+            promptContainer->OnEvent(event);
         }
         break;
 
     default:
         if (event == Event::Return || event == Event::Escape)
-            modal = Modal::None;
+            prompt = Prompt::None;
         else
-            modalContainer->OnEvent(event);
+            promptContainer->OnEvent(event);
         break;
     }
 }
 
-bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::string path) {
+bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string path) {
     switch (termCmd) {
-    case FileManager::TermCmds::Edit: std::system(("hx \"" + path + "\"").c_str()); return false;
+    case FileManager::TermCmds::Edit:
+        std::system(("hx \"" + path + "\"").c_str());
+        return false;
     case FileManager::TermCmds::Open:
         std::system(("start /B explorer \"" + path + "\"").c_str());
         return false;
-    case FileManager::TermCmds::CopyToSys: copyPathToClip(path); return false;
-    case FileManager::TermCmds::ChangeDir: writeToAppDataRoamingFile(path); return true;
-    case FileManager::TermCmds::QuitToLast: return true;
-    case FileManager::TermCmds::Quit: writeToAppDataRoamingFile(std::string(".")); return true;
-    default: return true;
+    case FileManager::TermCmds::CopyToSys:
+        copyPathToClip(path);
+        return false;
+    case FileManager::TermCmds::ChangeDir:
+        writeToAppDataRoamingFile(path);
+        return true;
+    case FileManager::TermCmds::QuitToLast:
+        return true;
+    case FileManager::TermCmds::Quit:
+        writeToAppDataRoamingFile(std::string("."));
+        return true;
+    case FileManager::TermCmds::Run:
+        runFileFromTerm(path);
+        return false;
+    default:
+        return true;
     }
 }
 
@@ -291,36 +361,36 @@ bool FileManager::handleTermCommand(FileManager::TermCmds termCmd, const std::st
 void FileManager::moveSelection(int delta, ScreenInteractive &screen) {
     if (visibleEntries.empty()) return;
 
-    int idx = (int)selectedIndex + delta;
+    int idx = (int)selIdx + delta;
     if (idx < 0) idx = visibleEntries.size() - 1;
     if (idx >= (int)visibleEntries.size()) idx = 0;
-    selectedIndex = idx;
+    selIdx = idx;
 
     size_t max_height = screen.dimy() - 3;
-    if (selectedIndex < scrollOffset)
-        scrollOffset = selectedIndex;
-    else if (selectedIndex >= scrollOffset + max_height)
-        scrollOffset = selectedIndex - max_height + 1;
+    if (selIdx < scrollOffset)
+        scrollOffset = selIdx;
+    else if (selIdx >= scrollOffset + max_height)
+        scrollOffset = selIdx - max_height + 1;
 }
 
 void FileManager::goToParent() {
-    if (rootPath.has_parent_path()) {
-        rootPath = rootPath.parent_path();
+    if (cwd.has_parent_path()) {
+        cwd = cwd.parent_path();
         refresh();
     }
 }
 
 // add a path that updates for each function here to track going back and forth
 void FileManager::openDir() {
-    auto &p = visibleEntries[selectedIndex].path;
+    auto &p = visibleEntries[selIdx].path;
     if (fs::is_directory(p)) {
-        rootPath = p;
+        cwd = p;
         refresh();
     }
 }
 
 void FileManager::toggleExpand() {
-    auto &p = visibleEntries[selectedIndex].path;
+    auto &p = visibleEntries[selIdx].path;
     if (!fs::is_directory(p)) return;
     if (expandedDirs.count(p))
         expandedDirs.erase(p);
@@ -361,57 +431,69 @@ void FileManager::changeDir(ScreenInteractive &s) {
 
 void FileManager::changeDrive(ScreenInteractive &) {
     drives = listDrives();
-    selectedDriveIndex = 0;
-    modal = Modal::DriveSelect;
+    selDriveIdx = 0;
+    prompt = Prompt::DriveSelect;
 }
 
 void FileManager::changeDirFromHistory(ScreenInteractive &) {
-    selectedHistoryIndex = 0;
-    modal = Modal::History;
+    selHistIdx = 0;
+    prompt = Prompt::History;
 }
 
 void FileManager::toggleSelect() {
-    auto p = visibleEntries[selectedIndex].path;
-    if (selectedFiles.count(p))
-        selectedFiles.erase(p);
+    auto p = visibleEntries[selIdx].path;
+    if (selItems.count(p))
+        selItems.erase(p);
     else
-        selectedFiles.insert(p);
+        selItems.insert(p);
 }
 
-void FileManager::promptModal(Modal m) {
-    modal = m;
-    modalTarget = visibleEntries[selectedIndex].path;
-    if (modal == Modal::NewFile || modal == Modal::NewDir) {
-        if (!fs::is_directory(modalTarget)) modalTarget = modalTarget.parent_path();
-        modalInput.clear();
-    } else if (modal == Modal::Rename) {
-        modalInput = modalTarget.filename().string();
+void FileManager::promptUser(Prompt m) {
+    prompt = m;
+    if (prompt != Prompt::Replace) { promptPath = visibleEntries[selIdx].path; }
+    if (prompt == Prompt::NewFile || prompt == Prompt::NewDir) {
+        if (!fs::is_directory(promptPath)) promptPath = promptPath.parent_path();
+        promptInput.clear();
+    } else if (prompt == Prompt::Rename) {
+        promptInput = promptPath.filename().string();
     }
 }
 
-void FileManager::copy() { copyPath = visibleEntries[selectedIndex].path; }
+void FileManager::copy() { copyPath = visibleEntries[selIdx].path; }
 
 void FileManager::copyToSys(ScreenInteractive &s) {
     termCmd = FileManager::TermCmds::CopyToSys;
     s.ExitLoopClosure()();
 }
 
-void FileManager::cut() { cutPath = visibleEntries[selectedIndex].path; }
+void FileManager::runFile(ScreenInteractive &s) {
+    termCmd = FileManager::TermCmds::Run;
+    s.ExitLoopClosure()();
+}
 
-void FileManager::paste() {
+void FileManager::cut() { cutPath = visibleEntries[selIdx].path; }
+
+std::optional<FileManager::Prompt> FileManager::tryPaste() {
     if (!copyPath && !cutPath) {
-        return;
+        return std::nullopt;
     } else if (copyPath.has_value()) {
-        fs::path dest = rootPath / copyPath->filename();
-        if (fs::is_directory(*copyPath))
-            fs::copy(*copyPath, dest, fs::copy_options::recursive);
-        else
-            fs::copy_file(*copyPath, dest);
-        copyPath.reset();
+        if (fs::exists(*copyPath)) {
+            fs::path dest = cwd / copyPath->filename();
+            if (fs::exists(dest)) {
+                promptPath = dest;
+                return Prompt::Replace;
+            } else if (fs::is_directory(*copyPath)) {
+                fs::copy(*copyPath, dest, fs::copy_options::recursive);
+            } else {
+                fs::copy_file(*copyPath, dest);
+                copyPath.reset();
+            }
+        }
     } else if (cutPath.has_value()) {
-        fs::path dest = rootPath / cutPath->filename();
+        fs::path dest = cwd / cutPath->filename();
         fs::rename(*cutPath, dest);
         cutPath.reset();
     }
     refresh();
+    return std::nullopt;
 }

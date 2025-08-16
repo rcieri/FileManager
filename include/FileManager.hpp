@@ -15,11 +15,11 @@ namespace fs = std::filesystem;
 
 class FileManager {
   public:
-    FileManager() : rootPath(fs::current_path()) {
-        expandedDirs.insert(rootPath);
+    FileManager() : cwd(fs::current_path()) {
+        expandedDirs.insert(cwd);
         refresh();
-        inputBox = ftxui::Input(&modalInput, "");
-        modalContainer = ftxui::Container::Vertical({inputBox});
+        inputBox = ftxui::Input(&promptInput, "");
+        promptContainer = ftxui::Container::Vertical({inputBox});
         history = listHistory();
     }
 
@@ -30,10 +30,11 @@ class FileManager {
         QuitToLast,
         Edit,
         Open,
-        CopyToSys
+        CopyToSys,
+        Run
     };
 
-    enum class Modal {
+    enum class Prompt {
         None,
         Rename,
         Move,
@@ -43,7 +44,8 @@ class FileManager {
         Error,
         DriveSelect,
         Help,
-        History
+        History,
+        Replace
     };
 
     struct Entry {
@@ -51,18 +53,18 @@ class FileManager {
         int depth;
     };
 
-    fs::path rootPath, modalTarget;
-    std::string modalInput, error;
-    ftxui::Component inputBox, modalContainer;
+    fs::path cwd, promptPath;
+    std::string promptInput, error;
+    ftxui::Component inputBox, promptContainer;
     std::vector<Entry> visibleEntries;
-    std::set<fs::path> expandedDirs, selectedFiles;
+    std::set<fs::path> expandedDirs, selItems;
     std::vector<std::string> drives, history;
-    size_t selectedIndex = 0;
+    size_t selIdx = 0;
     size_t scrollOffset = 0;
-    int selectedDriveIndex = 0;
-    int selectedHistoryIndex = 0;
+    int selDriveIdx = 0;
+    int selHistIdx = 0;
     TermCmds termCmd = TermCmds::None;
-    Modal modal = Modal::None;
+    Prompt prompt = Prompt::None;
     std::optional<fs::path> copyPath, cutPath;
     bool clipCut = false;
 
@@ -75,8 +77,8 @@ class FileManager {
 
     // Input handlers
     void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
-    void handleModalEvent(ftxui::Event);
-    bool handleTermCommand(TermCmds, const std::string);
+    void handlePromptEvent(ftxui::Event);
+    bool handleTermCmd(TermCmds, const std::string);
     void moveSelection(int delta, ftxui::ScreenInteractive &);
     void goToParent();
     void openDir();
@@ -90,11 +92,12 @@ class FileManager {
     void changeDrive(ftxui::ScreenInteractive &);
     void changeDirFromHistory(ftxui::ScreenInteractive &);
     void toggleSelect();
-    void promptModal(Modal);
+    void promptUser(Prompt);
     void copy();
     void copyToSys(ftxui::ScreenInteractive &);
+    void runFile(ftxui::ScreenInteractive &);
     void cut();
-    void paste();
+    std::optional<Prompt> tryPaste();
 };
 
 #endif

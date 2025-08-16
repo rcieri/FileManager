@@ -45,8 +45,8 @@ class UI {
     };
 
     ftxui::Element render(ftxui::ScreenInteractive &screen);
-    ftxui::Element createModalBox(const ftxui::Element &main_view, const std::string &title,
-                                  ftxui::Element body);
+    ftxui::Element createPromptBox(const ftxui::Element &main_view, const std::string &title,
+                                   ftxui::Element body);
     ftxui::Element createErrorOverlay(const ftxui::Element &main_view);
     ftxui::Element createHelpOverlay(const ftxui::Element &main_view);
     ftxui::Element createDriveSelect(const ftxui::Element &main_view);

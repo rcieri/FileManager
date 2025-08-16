@@ -127,15 +127,24 @@ inline std::string getFileTypeString(const fs::path &p) {
     }
 
     switch (status.type()) {
-    case fs::file_type::directory: return "dir";
-    case fs::file_type::symlink: return "sym";
-    case fs::file_type::block: return "blk";
-    case fs::file_type::character: return "chr";
-    case fs::file_type::fifo: return "fif";
-    case fs::file_type::socket: return "soc";
-    case fs::file_type::unknown: return "unk";
-    case fs::file_type::none: return "non";
-    default: return "oth";
+    case fs::file_type::directory:
+        return "dir";
+    case fs::file_type::symlink:
+        return "sym";
+    case fs::file_type::block:
+        return "blk";
+    case fs::file_type::character:
+        return "chr";
+    case fs::file_type::fifo:
+        return "fif";
+    case fs::file_type::socket:
+        return "soc";
+    case fs::file_type::unknown:
+        return "unk";
+    case fs::file_type::none:
+        return "non";
+    default:
+        return "oth";
     }
 }
 
@@ -161,4 +170,26 @@ inline std::string getFileSizeString(const fs::path &p) {
     return "";
 }
 
+inline void deleteFilOrDir(const fs::path &p) {
+    if (fs::is_directory(p))
+        fs::remove_all(p);
+    else
+        fs::remove(p);
+}
+
+inline void runFileFromTerm(const fs::path &path) {
+    if (!fs::exists(path)) { return; }
+
+    std::string cmd;
+    std::string ext = path.extension().string();
+
+    if (ext == ".py") {
+        cmd = "start cmd /C python \"" + path.string() + "\"";
+    } else if (ext == ".exe") {
+        cmd = "start \"\" \"" + path.string() + "\"";
+    } else {
+        cmd = "start \"\" \"" + path.string() + "\"";
+    }
+    std::system(cmd.c_str());
+}
 #endif
