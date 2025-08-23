@@ -10,7 +10,7 @@ using namespace ftxui;
 // --- UI ---
 Element UI::render(ScreenInteractive &screen) {
     Elements rows;
-    Layout layout = Layout::compute(screen.dimx());
+    Layout layout = Layout::compute(screen.dimx(), _fm.maxExpandedDepth());
 
     // Header row
     rows.push_back(hbox({

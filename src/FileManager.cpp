@@ -374,6 +374,14 @@ void FileManager::moveSelection(int delta, ScreenInteractive &screen) {
 }
 
 void FileManager::goToParent() {
+    if (!parentIdxs.empty()) {
+        selIdx = parentIdxs.back();
+        parentIdxs.pop_back();
+    } else {
+        selIdx = 0;
+        expandedDirs.clear();
+    }
+    scrollOffset = 0;
     if (cwd.has_parent_path()) {
         cwd = cwd.parent_path();
         refresh();
@@ -382,6 +390,7 @@ void FileManager::goToParent() {
 
 // add a path that updates for each function here to track going back and forth
 void FileManager::openDir() {
+    parentIdxs.push_back(selIdx);
     auto &p = visibleEntries[selIdx].path;
     if (fs::is_directory(p)) {
         cwd = p;
@@ -496,4 +505,14 @@ std::optional<FileManager::Prompt> FileManager::tryPaste() {
     }
     refresh();
     return std::nullopt;
+}
+
+int FileManager::maxExpandedDepth() const {
+    int maxDepth = 0;
+    for (auto &entry : visibleEntries) {
+        if (fs::is_directory(entry.path) && expandedDirs.count(entry.path)) {
+            maxDepth = std::max(maxDepth, entry.depth);
+        }
+    }
+    return maxDepth;
 }

@@ -24,15 +24,18 @@ class UI {
         static constexpr int size_col_width = 9;
         static constexpr int spacing = 5;
 
-        static Layout compute(int screen_width) {
+        static Layout compute(int screen_width, int max_expanded_depth) {
             Layout layout;
             layout.total_width = screen_width;
-            layout.max_indent_width = indent_per_level * 20;
+            layout.max_indent_width = indent_per_level * (max_expanded_depth + 1);
 
             int fixed_columns = layout.max_indent_width + icon_width + type_col_width +
                                 size_col_width + spacing * 2;
 
-            layout.max_name_width = std::clamp(screen_width - fixed_columns, 10, 60);
+            int available_for_name = screen_width - fixed_columns;
+            int upper = std::max(20, available_for_name);
+            layout.max_name_width = std::clamp(available_for_name, 10, upper);
+
             layout.type_column =
                 layout.max_indent_width + icon_width + layout.max_name_width + spacing;
 

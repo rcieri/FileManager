@@ -60,6 +60,7 @@ class FileManager {
     std::set<fs::path> expandedDirs, selItems;
     std::vector<std::string> drives, history;
     size_t selIdx = 0;
+    std::vector<size_t> parentIdxs;
     size_t scrollOffset = 0;
     int selDriveIdx = 0;
     int selHistIdx = 0;
@@ -98,6 +99,7 @@ class FileManager {
     void runFile(ftxui::ScreenInteractive &);
     void cut();
     std::optional<Prompt> tryPaste();
+    int maxExpandedDepth() const;
 };
 
 #endif
