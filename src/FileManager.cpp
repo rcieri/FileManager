@@ -381,16 +381,25 @@ bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string
 void FileManager::moveSelection(int delta, ScreenInteractive &screen) {
     if (visibleEntries.empty()) return;
 
-    int idx = (int)selIdx + delta;
-    if (idx < 0) idx = visibleEntries.size() - 1;
-    if (idx >= (int)visibleEntries.size()) idx = 0;
+    int idx = static_cast<int>(selIdx) + delta;
+    if (idx < 0) {
+        idx = visibleEntries.size() - 1;
+    } else if (idx >= static_cast<int>(visibleEntries.size())) {
+        idx = 0;
+    }
     selIdx = idx;
 
-    size_t max_height = screen.dimy() - 3;
-    if (selIdx < scrollOffset)
+    size_t max_height = screen.dimy() - 6;
+
+    if (selIdx < scrollOffset) {
         scrollOffset = selIdx;
-    else if (selIdx >= scrollOffset + max_height)
+    } else if (selIdx >= scrollOffset + max_height) {
         scrollOffset = selIdx - max_height + 1;
+    }
+
+    if (scrollOffset + max_height > visibleEntries.size()) {
+        scrollOffset = visibleEntries.size() > max_height ? visibleEntries.size() - max_height : 0;
+    }
 }
 
 void FileManager::goToParent() {

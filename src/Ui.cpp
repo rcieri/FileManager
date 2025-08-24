@@ -36,8 +36,8 @@ Element UI::render(ScreenInteractive &screen) {
         Element name = UI::applyStyle(p, text(p.filename().string()));
         if (_fm.selItems.count(p)) name = name | bgcolor(Color::BlueLight);
 
-        auto typeStr = getFileTypeString(p);
-        auto sizeStr = getFileSizeString(p);
+        std::string typeStr = getFileTypeString(p);
+        std::string sizeStr = getFileSizeString(p);
 
         int indent_spaces = std::min(depth * layout.indent_per_level, layout.max_indent_width);
         int icon_and_indent_width = indent_spaces + layout.icon_width;
@@ -217,12 +217,13 @@ Element UI::createHelpOverlay(const Element &main_view) {
         {"l", "enter dir"},
         {"e", "edit file/dir (helix)"},
         {"o", "open file"},
-        {"space", "run from term "},
+        {"space", "run from term"},
         {"r", "rename"},
         {"m", "move"},
         {"d", "delete"},
         {"n", "new file"},
         {"N", "new directory"},
+        {"u", "undo"},
         {"y", "copy"},
         {"Y", "copy to system"},
         {"x", "cut"},
