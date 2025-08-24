@@ -197,6 +197,8 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                 case 'p':
                     if (std::optional<Prompt> result = tryPaste()) { promptUser(*result); }
                     break;
+                case 'u':
+                    undo();
                 default:
                     break;
                 }
@@ -250,7 +252,10 @@ void FileManager::handlePromptEvent(Event event) {
 
     case Prompt::Rename:
         if (event == Event::Return) {
-            fs::rename(promptPath, promptPath.parent_path() / promptInput);
+            fs::path newPath = promptPath.parent_path() / promptInput;
+            fs::rename(promptPath, newPath);
+            Undo u = Undo{prompt, promptPath, newPath};
+            undoStack.push(u);
             prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
@@ -262,7 +267,10 @@ void FileManager::handlePromptEvent(Event event) {
 
     case Prompt::Move:
         if (event == Event::Return) {
-            fs::rename(promptPath, fs::path(promptInput) / promptPath.filename());
+            fs::path newPath = promptInput / promptPath.filename();
+            fs::rename(promptPath, newPath);
+            Undo u = Undo{prompt, promptPath, newPath};
+            undoStack.push(u);
             prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
@@ -274,6 +282,14 @@ void FileManager::handlePromptEvent(Event event) {
 
     case Prompt::Delete:
         if (event == Event::Return) {
+            if (fs::is_regular_file(promptPath)) {
+                Undo u{prompt, promptPath, {}, std::nullopt};
+                std::ifstream in(promptPath, std::ios::binary);
+                std::string data((std::istreambuf_iterator<char>(in)),
+                                 std::istreambuf_iterator<char>());
+                u.contents = data;
+                undoStack.push(u);
+            }
             deleteFilOrDir(promptPath);
             prompt = Prompt::None;
             refresh();
@@ -300,6 +316,8 @@ void FileManager::handlePromptEvent(Event event) {
     case Prompt::NewFile:
         if (event == Event::Return) {
             std::ofstream((promptPath / promptInput).string());
+            Undo u = Undo{prompt, promptPath / promptInput, {}, std::nullopt};
+            undoStack.push(u);
             prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
@@ -312,6 +330,8 @@ void FileManager::handlePromptEvent(Event event) {
     case Prompt::NewDir:
         if (event == Event::Return) {
             fs::create_directory(promptPath / promptInput);
+            Undo u = Undo{prompt, promptPath / promptInput, {}, std::nullopt};
+            undoStack.push(u);
             prompt = Prompt::None;
             refresh();
         } else if (event == Event::Escape) {
@@ -515,4 +535,38 @@ int FileManager::maxExpandedDepth() const {
         }
     }
     return maxDepth;
+}
+
+void FileManager::undo() {
+    if (undoStack.empty()) return;
+
+    Undo action = undoStack.top();
+    undoStack.pop();
+
+    switch (action.type) {
+    case Prompt::Rename:
+        fs::rename(action.target, action.source);
+        break;
+    case Prompt::Move:
+        fs::rename(action.target, action.source);
+        break;
+    case Prompt::Delete:
+        if (action.contents) {
+            std::ofstream out(action.source, std::ios::binary);
+            out << *action.contents;
+            out.close();
+        }
+        break;
+    case Prompt::NewFile:
+        deleteFilOrDir(action.source);
+        break;
+    case Prompt::NewDir:
+        deleteFilOrDir(action.source);
+        break;
+    // case Prompt::Cut:
+    // case Prompt::Copy:
+    default:
+        break;
+    }
+    refresh();
 }

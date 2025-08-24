@@ -7,6 +7,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <optional>
 #include <set>
+#include <stack>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +38,7 @@ class FileManager {
     enum class Prompt {
         None,
         Rename,
+        Replace,
         Move,
         Delete,
         NewFile,
@@ -44,8 +46,14 @@ class FileManager {
         Error,
         DriveSelect,
         Help,
-        History,
-        Replace
+        History
+    };
+
+    struct Undo {
+        Prompt type;
+        fs::path source;
+        fs::path target;
+        std::optional<std::string> contents;
     };
 
     struct Entry {
@@ -68,6 +76,7 @@ class FileManager {
     Prompt prompt = Prompt::None;
     std::optional<fs::path> copyPath, cutPath;
     bool clipCut = false;
+    std::stack<Undo> undoStack;
 
     // Core methods
     int Run();
@@ -100,6 +109,7 @@ class FileManager {
     void cut();
     std::optional<Prompt> tryPaste();
     int maxExpandedDepth() const;
+    void undo();
 };
 
 #endif
