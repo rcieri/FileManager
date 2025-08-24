@@ -91,7 +91,8 @@ Element UI::render(ScreenInteractive &screen) {
             break;
         case FileManager::Prompt::Delete:
             title = "Delete?";
-            body = hbox({text(_fm.promptPath.filename().string()) | bold | bgcolor(Color::Red)});
+            body = hbox({text(_fm.promptPath.filename().string()) | bold});
+            break;
         case FileManager::Prompt::Replace:
             title = "Replace Existing File/Dir?";
             body = hbox({text(_fm.promptPath.filename().string()) | bold});

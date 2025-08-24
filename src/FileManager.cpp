@@ -209,7 +209,7 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
             changeDirFromHistory(screen);
         }
     } catch (const std::exception &e) {
-        error = "Error handling event: " + std::string(e.what());
+        error = "Error: " + std::string(e.what());
         prompt = Prompt::Error;
     }
 }
