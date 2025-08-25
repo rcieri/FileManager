@@ -421,6 +421,7 @@ void FileManager::goToParent() {
 void FileManager::openDir() {
     parentIdxs.push_back(selIdx);
     auto &p = visibleEntries[selIdx].path;
+    selIdx = 0;
     if (fs::is_directory(p)) {
         cwd = p;
         refresh();
