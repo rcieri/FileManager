@@ -262,7 +262,7 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         {".js", {"\uE74E ", Color::Yellow}},
         {".ts", {"\uE628 ", Color::Blue}},
         {".rb", {"\uE21E ", Color::Red}},
-        {".ps1", {"󰞷 ", Color::Aquamarine1}},
+        {".ps1", {"󰞷 ", Color(0, 183, 255)}},
 
         // Web / markup
         {".html", {"\uE736 ", Color::Red}},
@@ -271,8 +271,8 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         {".xml", {"\uF1C3 ", Color::Cyan}},
         {".json", {"\uF1C3 ", Color::Cyan}},
         {".yaml", {"\uF1C3 ", Color::Cyan}},
-        {".md", {"󰪷 ", Color::Yellow}},
-        {".󰈙", {"\uF15C ", Color::Yellow}},
+        {".md", {"󰪷 ", Color(0, 184, 218)}},
+        {".txt", {"󰈙 ", Color(0, 206, 255)}},
 
         // Documents / Office
         {".pdf", {"\uF1C1 ", Color::Red}},
