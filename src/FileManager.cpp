@@ -2,19 +2,6 @@
 #include "Ui.hpp"
 #include "Utils.hpp"
 
-#include <algorithm>
-#include <filesystem>
-#include <fstream>
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/screen_interactive.hpp>
-#include <ftxui/dom/elements.hpp>
-#include <iostream>
-#include <optional>
-#include <set>
-#include <shlobj.h>
-#include <string>
-#include <vector>
-
 using namespace ftxui;
 
 int FileManager::Run() {
@@ -169,6 +156,9 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                     break;
                 case ' ':
                     runFile(screen);
+                    break;
+                case 'f':
+                    fzf(screen);
                     break;
                 case 'r':
                     promptUser(Prompt::Rename);
@@ -372,6 +362,9 @@ bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string
     case FileManager::TermCmds::Run:
         runFileFromTerm(path);
         return false;
+    case FileManager::TermCmds::Fzf:
+        runFzf(visibleEntriesPaths());
+        return false;
     default:
         return true;
     }
@@ -417,11 +410,11 @@ void FileManager::goToParent() {
     }
 }
 
-// add a path that updates for each function here to track going back and forth
 void FileManager::openDir() {
     parentIdxs.push_back(selIdx);
     auto &p = visibleEntries[selIdx].path;
     selIdx = 0;
+    scrollOffset = 0;
     if (fs::is_directory(p)) {
         cwd = p;
         refresh();
@@ -510,6 +503,11 @@ void FileManager::runFile(ScreenInteractive &s) {
     s.ExitLoopClosure()();
 }
 
+void FileManager::fzf(ScreenInteractive &s) {
+    termCmd = FileManager::TermCmds::Fzf;
+    s.ExitLoopClosure()();
+}
+
 void FileManager::cut() { cutPath = visibleEntries[selIdx].path; }
 
 std::optional<FileManager::Prompt> FileManager::tryPaste() {
@@ -579,4 +577,10 @@ void FileManager::undo() {
         break;
     }
     refresh();
+}
+
+std::vector<fs::path> FileManager::visibleEntriesPaths() const {
+    std::vector<fs::path> paths;
+    for (auto &e : visibleEntries) paths.push_back(e.path);
+    return paths;
 }

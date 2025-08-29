@@ -1,9 +1,5 @@
 #include "Ui.hpp"
 #include "Utils.hpp"
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/screen_interactive.hpp>
-#include <ftxui/dom/elements.hpp>
-#include <regex>
 
 using namespace ftxui;
 
@@ -32,10 +28,10 @@ Element UI::render(ScreenInteractive &screen) {
     for (size_t i = start; i < end; ++i) {
         auto [p, depth] = _fm.visibleEntries[i];
         bool isDir = fs::is_directory(p);
-        auto icon = text(isDir ? (_fm.expandedDirs.count(p) ? "📂 " : "📁 ") : UI::getFileIcon(p));
-        Element name = UI::applyStyle(p, text(p.filename().string()));
-        if (_fm.selItems.count(p)) name = name | bgcolor(Color::BlueLight);
+        Element fileElem = UI::fileElement(p, isDir, _fm.expandedDirs);
 
+        // Highlight selected items
+        if (_fm.selItems.count(p)) { fileElem = fileElem | bgcolor(Color::BlueLight); }
         std::string typeStr = getFileTypeString(p);
         std::string sizeStr = getFileSizeString(p);
 
@@ -47,8 +43,7 @@ Element UI::render(ScreenInteractive &screen) {
 
         auto line = hbox({
             text(std::string(indent_spaces, ' ')),
-            icon,
-            name | size(WIDTH, LESS_THAN, layout.max_name_width),
+            fileElem | size(WIDTH, LESS_THAN, layout.max_name_width),
             text(std::string(spacer_width, ' ')),
             text(typeStr) | dim | size(WIDTH, EQUAL, layout.type_col_width),
             text(std::string(layout.spacing, ' ')),
@@ -69,54 +64,47 @@ Element UI::render(ScreenInteractive &screen) {
 
     Element main_view = hbox({fileList | flex}) | size(HEIGHT, EQUAL, screen.dimy());
 
-    std::string title;
-    Element body;
-    if (_fm.prompt != FileManager::Prompt::None) {
-        switch (_fm.prompt) {
-        case FileManager::Prompt::Rename:
-            title = "Rename to:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Prompt::Move:
-            title = "Move to folder:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Prompt::NewFile:
-            title = "New file name:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Prompt::NewDir:
-            title = "New directory name:";
-            body = _fm.inputBox->Render();
-            break;
-        case FileManager::Prompt::Delete:
-            title = "Delete?";
-            body = hbox({text(_fm.promptPath.filename().string()) | bold});
-            break;
-        case FileManager::Prompt::Replace:
-            title = "Replace Existing File/Dir?";
-            body = hbox({text(_fm.promptPath.filename().string()) | bold});
-            break;
-        default:
-            break;
-        }
-    }
-
-    if (_fm.prompt == FileManager::Prompt::Help)
-        main_view = createHelpOverlay(main_view);
-    else if (_fm.prompt == FileManager::Prompt::DriveSelect)
-        main_view = createDriveSelect(main_view);
-    else if (_fm.prompt == FileManager::Prompt::History)
-        main_view = createHistorySelect(main_view);
-    else if (_fm.prompt == FileManager::Prompt::Error)
-        main_view = createErrorOverlay(main_view);
-    else if (_fm.prompt != FileManager::Prompt::None)
-        main_view = createPromptBox(main_view, title, body);
-
-    return main_view;
+    return createOverlay(main_view);
 }
 
-Element UI::createPromptBox(const Element &main_view, const std::string &title, Element body) {
+Element UI::createOverlay(const Element &main_view) {
+    Element backdrop = main_view | dim;
+
+    auto promptBox = [&](const std::string &title, std::optional<Element> body = std::nullopt) {
+        return createPromptBox(main_view, title, body);
+    };
+
+    switch (_fm.prompt) {
+    case FileManager::Prompt::Rename:
+        return promptBox("Rename to:");
+    case FileManager::Prompt::Move:
+        return promptBox("Move to folder:");
+    case FileManager::Prompt::NewFile:
+        return promptBox("New file name:");
+    case FileManager::Prompt::NewDir:
+        return promptBox("New directory name:");
+    case FileManager::Prompt::Delete:
+        return promptBox("Delete?", hbox({text(_fm.promptPath.filename().string()) | bold}));
+    case FileManager::Prompt::Replace:
+        return promptBox("Replace Existing File/Dir?",
+                         hbox({text(_fm.promptPath.filename().string()) | bold}));
+    case FileManager::Prompt::DriveSelect:
+        return createDriveSelectOverlay(backdrop);
+    case FileManager::Prompt::History:
+        return createHistoryOverlay(backdrop);
+    case FileManager::Prompt::Error:
+        return createErrorOverlay(backdrop);
+    case FileManager::Prompt::Help:
+        return createHelpOverlay(backdrop);
+    case FileManager::Prompt::None:
+    default:
+        return main_view;
+    }
+}
+
+Element UI::createPromptBox(const Element &main_view, const std::string &title,
+                            std::optional<Element> body_opt) {
+    Element body = body_opt.value_or(_fm.inputBox->Render());
     Element backdrop = main_view | dim;
 
     Element padded_body = vbox({
@@ -133,7 +121,7 @@ Element UI::createPromptBox(const Element &main_view, const std::string &title, 
     return dbox({backdrop, center(prompt_window)});
 }
 
-Element UI::createDriveSelect(const Element &main_view) {
+Element UI::createDriveSelectOverlay(const Element &main_view) {
     Element backdrop = main_view | dim;
 
     Elements drive_rows;
@@ -153,7 +141,7 @@ Element UI::createDriveSelect(const Element &main_view) {
     return dbox({backdrop, center(drive_window)});
 }
 
-Element UI::createHistorySelect(const Element &main_view) {
+Element UI::createHistoryOverlay(const Element &main_view) {
     Element backdrop = main_view | dim;
 
     Elements history_rows;
@@ -255,33 +243,97 @@ Element UI::createHelpOverlay(const Element &main_view) {
     return dbox({main_view | dim, center(help_window)});
 }
 
-std::string UI::getFileIcon(const fs::path &p) {
-    std::string ext = p.extension().string();
-    if (ext == ".cpp" || ext == ".h" || ext == ".c") return "🧠 ";
-    if (ext == ".md" || ext == ".txt") return "📝 ";
-    if (ext == ".png" || ext == ".jpg") return "🖼️ ";
-    if (ext == ".json" || ext == ".xml" || ext == ".yaml") return "📄 ";
-    if (ext == ".pdf") return "📚 ";
-    if (ext == ".csv") return "📈 ";
-    if (ext == ".xlsx") return "📁 ";
-    if (ext == ".py") return "🐍 ";
-    if (ext == ".m") return "📐 ";
-    if (ext == ".cs") return "💻 ";
-    return "📃 ";
-}
+Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> &expandedDirs) {
+    // Combined icon + color map
+    static const std::unordered_map<std::string, std::pair<std::string, Color>> fileMap = {
+        // C / C++ / C# / Obj-C
+        {".c", {"\uE61E ", Color::Green}},
+        {".cpp", {"\uE61E ", Color::Green}},
+        {".cc", {"\uE61E ", Color::Green}},
+        {".h", {"\uE61F ", Color::Green}},
+        {".hpp", {"\uE61F ", Color::Green}},
+        {".cs", {"\uE7A8 ", Color::BlueLight}},
 
-Element UI::applyStyle(const fs::path &p, Element e) {
-    std::string ext = p.extension().string();
-    if (ext == ".cpp" || ext == ".hpp" || ext == ".c" || ext == ".cc" || ext == ".h")
-        return e | color(Color::Green);
-    if (ext == ".md" || ext == ".txt") return e | color(Color::Yellow);
-    if (ext == ".png" || ext == ".jpg") return e | color(Color::Magenta);
-    if (ext == ".json" || ext == ".xml" || ext == ".yaml") return e | color(Color::Cyan);
-    if (ext == ".pdf") return e | color(Color::Red);
-    if (ext == ".csv") return e | color(Color::Blue);
-    if (ext == ".xlsx") return e | color(Color::Green);
-    if (ext == ".py") return e | color(Color::Purple);
-    if (ext == ".m") return e | color(Color::DarkGreen);
-    if (ext == ".cs") return e | color(Color::RedLight);
-    return e;
+        // Scripts
+        {".py", {"\uE606 ", Color::Purple}},
+        {".sh", {"\uE795 ", Color::LightGreen}},
+        {".bat", {"\uE7B5 ", Color::Yellow}},
+        {".m", {"\uE6A9 ", Color::DarkGreen}},
+        {".js", {"\uE74E ", Color::Yellow}},
+        {".ts", {"\uE628 ", Color::Blue}},
+        {".rb", {"\uE21E ", Color::Red}},
+        {".ps1", {"󰞷 ", Color::Aquamarine1}},
+
+        // Web / markup
+        {".html", {"\uE736 ", Color::Red}},
+        {".css", {"\uE749 ", Color::Blue}},
+        {".php", {"\uE73D ", Color::Purple}},
+        {".xml", {"\uF1C3 ", Color::Cyan}},
+        {".json", {"\uF1C3 ", Color::Cyan}},
+        {".yaml", {"\uF1C3 ", Color::Cyan}},
+        {".md", {"󰪷 ", Color::Yellow}},
+        {".󰈙", {"\uF15C ", Color::Yellow}},
+
+        // Documents / Office
+        {".pdf", {"\uF1C1 ", Color::Red}},
+        {".doc", {"\uF1C2 ", Color::Blue}},
+        {".docx", {"\uF1C2 ", Color::Blue}},
+        {".xls", {"\uF1C8 ", Color::Green}},
+        {".xlsx", {"\uF1C8 ", Color::Green}},
+        {".ppt", {"\uF1C4 ", Color::Red}},
+        {".pptx", {"\uF1C4 ", Color::Red}},
+
+        // Images
+        {".png", {"\uF1C5 ", Color::Magenta}},
+        {".jpg", {"\uF1C5 ", Color::Magenta}},
+        {".jpeg", {"\uF1C5 ", Color::Magenta}},
+        {".gif", {"\uF1C5 ", Color::Magenta}},
+        {".bmp", {"\uF1C5 ", Color::Magenta}},
+        {".svg", {"\uF1C5 ", Color::Magenta}},
+
+        // Audio / Video
+        {".mp3", {"\uF001 ", Color::Purple}},
+        {".wav", {"\uF001 ", Color::Purple}},
+        {".ogg", {"\uF001 ", Color::Purple}},
+        {".flac", {"\uF001 ", Color::Purple}},
+        {".mp4", {"\uF03D ", Color::Cyan}},
+        {".mkv", {"\uF03D ", Color::Cyan}},
+        {".avi", {"\uF03D ", Color::Cyan}},
+
+        // Archives / compressed
+        {".zip", {"\uF410 ", Color::Yellow}},
+        {".tar", {"\uF410 ", Color::Yellow}},
+        {".gz", {"\uF410 ", Color::Yellow}},
+        {".bz2", {"\uF410 ", Color::Yellow}},
+        {".rar", {"\uF410 ", Color::Yellow}},
+        {".7z", {"\uF410 ", Color::Yellow}},
+
+        // Others
+        {".iso", {"\uF7C2 ", Color::BlueLight}},
+        {".exe", {"\uF013 ", Color::RedLight}}
+
+        // // Defaults (folders and files)
+        // {"folder_closed", {"\uF07B ", Color::Blue}}, // closed folder
+        // {"folder_open", {"\uF07C ", Color::Blue}},   // open folder
+        // {"file", {"\uF016 ", Color::White}}          // generic file
+    };
+
+    std::string iconStr;
+    Color col;
+
+    if (isDir) {
+        iconStr = expandedDirs.count(p) ? "📂 " : "📁 "; // open/closed folder
+        return text(iconStr + p.filename().string());
+    } else {
+        std::string ext = p.has_extension() ? p.extension().string() : "";
+        auto it = fileMap.find(ext);
+        if (it != fileMap.end()) {
+            iconStr = it->second.first;
+            col = it->second.second;
+        } else {
+            iconStr = "\uF016 "; // default file icon
+            col = Color::White;
+        }
+    }
+    return text(iconStr + p.filename().string()) | color(col);
 }

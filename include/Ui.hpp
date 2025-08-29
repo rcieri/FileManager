@@ -5,11 +5,19 @@
 #include "Utils.hpp"
 #include <algorithm>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
+#include <regex>
+#include <unordered_map>
 
 class UI {
   public:
     UI(const FileManager &fm) : _fm(fm) {}
+
+    ftxui::Element render(ftxui::ScreenInteractive &screen);
+
+  private:
+    const FileManager &_fm;
 
     struct Layout {
         int total_width;
@@ -46,19 +54,17 @@ class UI {
             return layout;
         }
     };
-
-    ftxui::Element render(ftxui::ScreenInteractive &screen);
     ftxui::Element createPromptBox(const ftxui::Element &main_view, const std::string &title,
-                                   ftxui::Element body);
+                                   std::optional<ftxui::Element> body_opt = std::nullopt);
+
     ftxui::Element createErrorOverlay(const ftxui::Element &main_view);
     ftxui::Element createHelpOverlay(const ftxui::Element &main_view);
-    ftxui::Element createDriveSelect(const ftxui::Element &main_view);
-    ftxui::Element createHistorySelect(const ftxui::Element &main_view);
-    ftxui::Element applyStyle(const fs::path &p, ftxui::Element e);
-    std::string getFileIcon(const fs::path &p);
+    ftxui::Element createDriveSelectOverlay(const ftxui::Element &main_view);
+    ftxui::Element createHistoryOverlay(const ftxui::Element &main_view);
+    ftxui::Element createOverlay(const ftxui::Element &main_view);
 
-  private:
-    const FileManager &_fm;
+    ftxui::Element fileElement(const fs::path &p, bool isDir,
+                               const std::set<fs::path> &expandedDirs);
 };
 
 #endif

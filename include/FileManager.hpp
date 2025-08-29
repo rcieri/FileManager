@@ -1,12 +1,16 @@
 #ifndef FILEMANAGER_HPP_
 #define FILEMANAGER_HPP_
 
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
+#include <iostream>
 #include <optional>
 #include <set>
+#include <shlobj.h>
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -32,7 +36,8 @@ class FileManager {
         Edit,
         Open,
         CopyToSys,
-        Run
+        Run,
+        Fzf,
     };
 
     enum class Prompt {
@@ -106,10 +111,12 @@ class FileManager {
     void copy();
     void copyToSys(ftxui::ScreenInteractive &);
     void runFile(ftxui::ScreenInteractive &);
+    void fzf(ftxui::ScreenInteractive &);
     void cut();
     std::optional<Prompt> tryPaste();
     int maxExpandedDepth() const;
     void undo();
+    std::vector<fs::path> visibleEntriesPaths() const;
 };
 
 #endif

@@ -192,4 +192,33 @@ inline void runFileFromTerm(const fs::path &path) {
     }
     std::system(cmd.c_str());
 }
+
+inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries) {
+    if (entries.empty()) return std::nullopt;
+
+    std::string input;
+    for (auto &p : entries) input += p.string() + "\n";
+
+    std::string cmd = "fzf --ansi";
+    FILE *pipe = _popen(cmd.c_str(), "w+");
+    if (!pipe) return std::nullopt;
+
+    // Write entries to fzf stdin
+    fwrite(input.c_str(), 1, input.size(), pipe);
+    fflush(pipe);
+
+    char buffer[1024];
+    std::string selected;
+    if (fgets(buffer, sizeof(buffer), pipe)) selected = buffer;
+
+    _pclose(pipe);
+
+    if (!selected.empty()) {
+        if (selected.back() == '\n') selected.pop_back();
+        return fs::path(selected);
+    }
+
+    return std::nullopt;
+}
+
 #endif
