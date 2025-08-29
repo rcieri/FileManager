@@ -1,9 +1,12 @@
 #ifndef UI_HPP_
-#define UT_HPP_
+#define UI_HPP_
+
+#define NOMINMAX
 
 #include "FileManager.hpp"
 #include "Utils.hpp"
 #include <algorithm>
+#include <filesystem>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -63,8 +66,8 @@ class UI {
     ftxui::Element createHistoryOverlay(const ftxui::Element &main_view);
     ftxui::Element createOverlay(const ftxui::Element &main_view);
 
-    ftxui::Element fileElement(const fs::path &p, bool isDir,
-                               const std::set<fs::path> &expandedDirs);
+    ftxui::Element fileElement(const std::filesystem::path &p, bool isDir,
+                               const std::set<std::filesystem::path> &expandedDirs);
 };
 
 #endif
