@@ -226,4 +226,27 @@ inline std::optional<fs::path> runFzf(const fs::path &path) {
     return runFzf(entries, target);
 }
 
+namespace fs = std::filesystem;
+
+inline std::string formatHistoryPath(const fs::path &absPath, const fs::path &cwd) {
+    try {
+        // 1. Try relative to cwd
+        fs::path relToCwd = fs::relative(absPath, cwd);
+        if (!relToCwd.empty() && relToCwd.string().find("..") != 0) { return relToCwd.string(); }
+    } catch (const fs::filesystem_error &) {}
+
+    try {
+        const char *homeEnv = std::getenv("USERPROFILE");
+        if (homeEnv) {
+            fs::path home(homeEnv);
+            fs::path relToHome = fs::relative(absPath, home);
+            if (!relToHome.empty() && relToHome.string().find("..") != 0) {
+                return std::string("~\\") + relToHome.string();
+            }
+        }
+    } catch (const fs::filesystem_error &) {}
+
+    return absPath.string();
+}
+
 #endif

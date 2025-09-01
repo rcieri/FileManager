@@ -66,6 +66,7 @@ std::vector<std::string> FileManager::listDrives() {
 }
 
 std::vector<std::string> FileManager::listHistory() {
+    std::vector<std::string> history;
     static const std::string appDataDir = getAppDataDir();
     static const std::string historyFile = appDataDir + "\\history.json";
 
@@ -88,15 +89,13 @@ std::vector<std::string> FileManager::listHistory() {
 
         for (size_t i = 0; i < sorted.size() && i < 5; ++i) {
             fs::path absPath(sorted[i].first);
-            try {
-                fs::path rel = fs::relative(absPath, cwd);
-                history.push_back(rel.string());
-            } catch (const fs::filesystem_error &) { history.push_back(absPath.string()); }
+            history.push_back(absPath.string()); // always absolute
         }
     } catch (const std::exception &e) {
         error = "Error: " + std::string(e.what());
         prompt = Prompt::Error;
     }
+
     return history;
 }
 
@@ -575,6 +574,7 @@ void FileManager::changeDrive(ScreenInteractive &) {
 }
 
 void FileManager::changeDirFromHistory(ScreenInteractive &) {
+    history = listHistory();
     selHistIdx = 0;
     prompt = Prompt::History;
 }

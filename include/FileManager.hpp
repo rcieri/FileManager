@@ -25,7 +25,6 @@ class FileManager {
         refresh();
         inputBox = ftxui::Input(&promptInput, "");
         promptContainer = ftxui::Container::Vertical({inputBox});
-        history = listHistory();
     }
 
     enum class TermCmds {
@@ -97,6 +96,8 @@ class FileManager {
     void buildTree(const fs::path &, int);
     std::vector<std::string> listDrives();
     std::vector<std::string> listHistory();
+    std::vector<fs::path> visibleEntriesPaths() const;
+    int maxExpandedDepth() const;
 
     // Input handlers
     void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
@@ -121,9 +122,7 @@ class FileManager {
     void runFile(ftxui::ScreenInteractive &);
     void cut();
     std::optional<Prompt> tryPaste();
-    int maxExpandedDepth() const;
     void undo();
-    std::vector<fs::path> visibleEntriesPaths() const;
 };
 
 #endif

@@ -148,15 +148,17 @@ Element UI::createHistoryOverlay(const Element &main_view) {
 
     Elements history_rows;
     for (size_t i = 0; i < _fm.history.size(); ++i) {
-        auto h = text(" " + _fm.history[i] + " ");
+        fs::path absPath = _fm.history[i];
+        std::string display = formatHistoryPath(absPath, _fm.cwd);
+
+        auto h = text(" " + display + " ");
         if (i == _fm.selHistIdx) { h = h | bgcolor(Color::BlueLight) | color(Color::Black) | bold; }
         history_rows.push_back(h);
     }
 
     auto history_window =
         window(text(" History ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
-               vbox(history_rows)) |
-        size(WIDTH, EQUAL, 60) | size(HEIGHT, LESS_THAN, 15);
+               vbox(history_rows));
 
     return dbox({backdrop, center(history_window)});
 }
@@ -279,11 +281,11 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         {".cs", {"\uE7A8 ", Color::BlueLight}},
 
         // Scripts
-        {".py", {"\uE606 ", Color::Purple}},
+        {".py", {"\uE606 ", Color(75, 139, 190)}},
         {".sh", {"\uE795 ", Color::LightGreen}},
         {".bat", {"\uE7B5 ", Color::Yellow}},
         {".m", {"\uE6A9 ", Color::DarkGreen}},
-        {".js", {"\uE74E ", Color::Yellow}},
+        {".js", {" ", Color(240, 230, 140)}},
         {".ts", {"\uE628 ", Color::Blue}},
         {".rb", {"\uE21E ", Color::Red}},
         {".ps1", {"󰞷 ", Color(0, 183, 255)}},
@@ -293,7 +295,7 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         {".css", {"\uE749 ", Color::Blue}},
         {".php", {"\uE73D ", Color::Purple}},
         {".xml", {"\uF1C3 ", Color::Cyan}},
-        {".json", {"\uF1C3 ", Color::Cyan}},
+        {".json", {" ", Color(255, 215, 0)}},
         {".yaml", {"\uF1C3 ", Color::Cyan}},
         {".md", {"󰪷 ", Color(0, 184, 218)}},
         {".txt", {"󰈙 ", Color(0, 206, 255)}},
@@ -304,6 +306,7 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         {".docx", {"\uF1C2 ", Color::Blue}},
         {".xls", {"\uF1C8 ", Color::Green}},
         {".xlsx", {"\uF1C8 ", Color::Green}},
+        {".csv", {"\uF1C1 ", Color(145, 193, 47)}},
         {".ppt", {"\uF1C4 ", Color::Red}},
         {".pptx", {"\uF1C4 ", Color::Red}},
 
@@ -334,7 +337,7 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
 
         // Others
         {".iso", {"\uF7C2 ", Color::BlueLight}},
-        {".exe", {"\uF013 ", Color::RedLight}}
+        {".exe", {"\uF013 ", Color(0, 250, 154)}}
 
         // // Defaults (folders and files)
         // {"folder_closed", {"\uF07B ", Color::Blue}}, // closed folder
