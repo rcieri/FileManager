@@ -229,9 +229,7 @@ Element UI::createHelpOverlay(const Element &main_view) {
         {"?", "show help"},
     };
 
-    Elements help_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
-                                text("  Description") | bold | color(Color::GrayLight)}),
-                          separator()};
+    Elements help_rows;
 
     for (auto &[key, desc] : help_entries) {
         help_rows.push_back(hbox(
@@ -248,15 +246,11 @@ Element UI::createHelpOverlay(const Element &main_view) {
 
 Element UI::createFzfMenuOverlay(const Element &main_view) {
     std::vector<std::pair<std::string, std::string>> fzf_entries = {
-        {"f", "file-picker (edit)"},
-        {"o", "file-picker (open)"},
-        {"c", "file-picker (copy)"},
-        {"e", "dir-picker"},
+        {"f", "file-picker (cwd)"},  {"f", "file-picker (edit)"}, {"o", "file-picker (open)"},
+        {"c", "file-picker (copy)"}, {"e", "dir-picker"},
     };
 
-    Elements fzf_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
-                               text("  Description") | bold | color(Color::GrayLight)}),
-                         separator()};
+    Elements fzf_rows;
 
     for (auto &[key, desc] : fzf_entries) {
         fzf_rows.push_back(hbox(
