@@ -207,8 +207,8 @@ Element UI::createHelpOverlay(const Element &main_view) {
         {"l", "enter dir"},
         {"e", "edit file/dir (helix)"},
         {"o", "open file"},
-        {"space", "run from term"},
         {"r", "rename"},
+        {"R", "run from term"},
         {"m", "move"},
         {"d", "delete"},
         {"n", "new file"},
@@ -220,6 +220,7 @@ Element UI::createHelpOverlay(const Element &main_view) {
         {"p", "paste"},
         {"c", "change dir"},
         {"C", "change drive"},
+        {"space", "file/dir-picker"},
         {"Return", "expand/collapse"},
         {"Esc", "collapse all"},
         {"q", "quit to last"},
@@ -240,15 +241,18 @@ Element UI::createHelpOverlay(const Element &main_view) {
     auto help_window =
         window(text(" Help ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
                vbox(help_rows)) |
-        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
+        bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
 
     return dbox({main_view | dim, center(help_window)});
 }
 
 Element UI::createFzfMenuOverlay(const Element &main_view) {
     std::vector<std::pair<std::string, std::string>> fzf_entries = {
-        {"c", "fzf | clip"}, {"h", "hx $(fzf)"}, {"o", "start $(fzf)"},
-        {"d", "cd $(fzd)"},  {"q", "quit"},
+        {"f", "file-picker (edit)"},
+        {"o", "file-picker (open)"},
+        {"c", "file-picker (copy)"},
+        {"e", "dir-picker"},
+        {"q", "quit"},
     };
 
     Elements fzf_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
@@ -263,7 +267,7 @@ Element UI::createFzfMenuOverlay(const Element &main_view) {
     auto fzf_window =
         window(text(" FZF Menu ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
                vbox(fzf_rows)) |
-        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
+        bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
 
     return dbox({main_view | dim, center(fzf_window)});
 }

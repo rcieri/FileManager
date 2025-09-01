@@ -107,7 +107,7 @@ std::vector<std::string> FileManager::listHistory() {
 void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
     try {
         if (prompt != Prompt::None) {
-            handlePromptEvent(event);
+            handlePromptEvent(event, screen);
             return;
         }
 
@@ -206,7 +206,7 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
     }
 }
 
-void FileManager::handlePromptEvent(Event event) {
+void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
     switch (prompt) {
     case Prompt::DriveSelect:
         if (event == Event::Character("k"))
@@ -339,20 +339,23 @@ void FileManager::handlePromptEvent(Event event) {
                 case 'c':
                     termCmd = TermCmds::FzfClip;
                     prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
                     break;
-                case 'h':
+                case 'f':
                     termCmd = TermCmds::FzfHx;
                     prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
                     break;
                 case 'o':
                     termCmd = TermCmds::FzfOpen;
                     prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
                     break;
-                case 'd':
+                case 'e':
                     termCmd = TermCmds::FzfCd;
                     prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
                     break;
-                case 'q':
                 case '\x1b': // Escape
                     prompt = Prompt::None;
                     break;
@@ -393,16 +396,31 @@ bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string
         runFileFromTerm(path);
         return false;
     case FileManager::TermCmds::FzfClip:
-        runFzf(visibleEntriesPaths());
+        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            copyPathToClip(selected->string());
+        }
         return false;
     case FileManager::TermCmds::FzfHx:
-        runFzf(visibleEntriesPaths());
+        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            std::system(("hx \"" + selected->string() + "\"").c_str());
+        }
         return false;
     case FileManager::TermCmds::FzfOpen:
-        runFzf(visibleEntriesPaths());
+        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
+        }
         return false;
     case FileManager::TermCmds::FzfCd:
-        runFzf(visibleEntriesPaths());
+        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            if (fs::is_directory(*selected)) {
+                writeToAppDataRoamingFile(selected->string());
+                return true;
+
+            } else {
+                writeToAppDataRoamingFile(selected->parent_path().string());
+                return true;
+            }
+        }
         return false;
     default:
         return true;

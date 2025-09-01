@@ -2,6 +2,7 @@
 #define UTILS_HPP_
 
 #include <codecvt>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <ftxui/dom/elements.hpp>
@@ -16,11 +17,10 @@
 #include <windows.h>
 
 namespace fs = std::filesystem;
-
-namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-inline void writeToAppDataRoamingFile(const std::string &changePath) {
+// This helper function now also provides the base AppData path for runFzf
+inline std::string getAppDataDir() {
     static std::string appDataDir = [] {
         PWSTR path = NULL;
         std::string result;
@@ -34,7 +34,11 @@ inline void writeToAppDataRoamingFile(const std::string &changePath) {
         }
         return result;
     }();
+    return appDataDir;
+}
 
+inline void writeToAppDataRoamingFile(const std::string &changePath) {
+    const std::string appDataDir = getAppDataDir();
     const std::string historyFile = appDataDir + "\\history.txt";
     const std::string historyJsonFile = appDataDir + "\\history.json";
 
@@ -66,40 +70,18 @@ inline void writeToAppDataRoamingFile(const std::string &changePath) {
 }
 
 inline bool copyPathToClip(const std::string &utf8Path) {
-    // Convert std::string (UTF-8) to std::wstring (UTF-16)
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring widePath = converter.from_bytes(utf8Path);
-
-    size_t totalSize = sizeof(DROPFILES) +
-                       (widePath.length() + 2) * sizeof(wchar_t); // +1 for null, +1 for double-null
-
-    HGLOBAL hGlobal = GlobalAlloc(GHND | GMEM_SHARE, totalSize);
-    if (!hGlobal) return false;
-
-    DROPFILES *df = static_cast<DROPFILES *>(GlobalLock(hGlobal));
-    if (!df) {
-        GlobalFree(hGlobal);
-        return false;
-    }
-
-    df->pFiles = sizeof(DROPFILES);
-    df->fWide = TRUE;
-
-    wchar_t *p = reinterpret_cast<wchar_t *>(reinterpret_cast<BYTE *>(df) + sizeof(DROPFILES));
-    wcscpy_s(p, widePath.length() + 1, widePath.c_str());
-    p[widePath.length() + 1] = L'\0'; // second null terminator
-
-    GlobalUnlock(hGlobal);
-
-    if (!OpenClipboard(nullptr)) {
-        GlobalFree(hGlobal);
-        return false;
-    }
-
+    if (!OpenClipboard(nullptr)) { return false; }
     EmptyClipboard();
-    SetClipboardData(CF_HDROP, hGlobal);
+    HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, utf8Path.size() + 1);
+    if (!hg) {
+        CloseClipboard();
+        return false;
+    }
+    memcpy(GlobalLock(hg), utf8Path.c_str(), utf8Path.size() + 1);
+    GlobalUnlock(hg);
+    SetClipboardData(CF_TEXT, hg);
     CloseClipboard();
-
+    GlobalFree(hg);
     return true;
 }
 
@@ -107,21 +89,21 @@ inline std::string getFileTypeString(const fs::path &p) {
     std::error_code ec;
 
     if (!fs::exists(p, ec)) {
-        if (fs::is_symlink(p, ec)) return "brk"; // Broken symlink
-        return "mis";                            // Missing
+        if (fs::is_symlink(p, ec)) return "brk";
+        return "mis";
     }
 
     fs::file_status status = fs::symlink_status(p, ec);
 
     if (status.type() == fs::file_type::regular) {
         auto ext = p.extension().string();
-        if (ext.length() >= 2) { // at least '.' + 1 char
-            ext = ext.substr(1); // remove dot
+        if (ext.length() >= 2) {
+            ext = ext.substr(1);
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             if (ext.length() > 3) ext = ext.substr(0, 3);
             return ext;
         }
-        return "non"; // No extension
+        return "non";
     }
 
     switch (status.type()) {
@@ -150,7 +132,6 @@ inline std::string getFileSizeString(const fs::path &p) {
     try {
         if (fs::is_regular_file(p)) {
             auto size = fs::file_size(p);
-            // Format size to human-readable string (e.g. KB, MB)
             const char *units[] = {"B", "KB", "MB", "GB", "TB"};
             size_t unitIndex = 0;
             double displaySize = static_cast<double>(size);
@@ -162,9 +143,7 @@ inline std::string getFileSizeString(const fs::path &p) {
             oss << std::fixed << std::setprecision(1) << displaySize << " " << units[unitIndex];
             return oss.str();
         }
-    } catch (...) {
-        // Ignore errors like permission denied
-    }
+    } catch (...) {}
     return "";
 }
 
@@ -183,8 +162,6 @@ inline void runFileFromTerm(const fs::path &path) {
 
     if (ext == ".py") {
         cmd = "start cmd /C python \"" + path.string() + "\"";
-    } else if (ext == ".exe") {
-        cmd = "start \"\" \"" + path.string() + "\"";
     } else {
         cmd = "start \"\" \"" + path.string() + "\"";
     }
@@ -192,31 +169,54 @@ inline void runFileFromTerm(const fs::path &path) {
 }
 
 inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries) {
-    if (entries.empty()) return std::nullopt;
+    if (entries.empty()) { return std::nullopt; }
 
-    std::string input;
-    for (auto &p : entries) input += p.string() + "\n";
+    std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
 
-    std::string cmd = "fzf --ansi";
-    FILE *pipe = _popen(cmd.c_str(), "w+");
-    if (!pipe) return std::nullopt;
+    std::ofstream outFile(fzfInputFile);
+    if (!outFile) { return std::nullopt; }
+    for (const auto &p : entries) { outFile << p.string() << "\n"; }
+    outFile.close();
 
-    // Write entries to fzf stdin
-    fwrite(input.c_str(), 1, input.size(), pipe);
-    fflush(pipe);
+    std::string cmd = "type \"" + fzfInputFile + "\" | fzf";
+    FILE *pipe = _popen(cmd.c_str(), "r");
+    if (!pipe) {
+        fs::remove(fzfInputFile);
+        return std::nullopt;
+    }
 
     char buffer[1024];
     std::string selected;
-    if (fgets(buffer, sizeof(buffer), pipe)) selected = buffer;
+    if (fgets(buffer, sizeof(buffer), pipe) != nullptr) { selected = buffer; }
 
     _pclose(pipe);
+    fs::remove(fzfInputFile); // Clean up the file.
 
     if (!selected.empty()) {
-        if (selected.back() == '\n') selected.pop_back();
-        return fs::path(selected);
+        if (selected.back() == '\n') { selected.pop_back(); }
+        if (!selected.empty()) { return fs::path(selected); }
     }
 
     return std::nullopt;
+}
+
+inline std::optional<fs::path> runFzf(const fs::path &path) {
+    fs::path target = path;
+
+    // If not a directory, use parent
+    if (!fs::exists(target) || !fs::is_directory(target)) {
+        target = target.parent_path();
+        if (target.empty() || !fs::exists(target)) return std::nullopt;
+    }
+
+    std::vector<fs::path> entries;
+
+    // Recursively iterate all files and directories
+    for (auto &p : fs::recursive_directory_iterator(target)) {
+        entries.push_back(p.path()); // adds both files and directories
+    }
+
+    return runFzf(entries); // Calls your existing vector version
 }
 
 #endif
