@@ -252,7 +252,6 @@ Element UI::createFzfMenuOverlay(const Element &main_view) {
         {"o", "file-picker (open)"},
         {"c", "file-picker (copy)"},
         {"e", "dir-picker"},
-        {"q", "quit"},
     };
 
     Elements fzf_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),

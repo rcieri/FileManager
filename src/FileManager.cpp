@@ -361,6 +361,8 @@ void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
                     break;
                 }
             }
+        } else if (event == Event::Escape) {
+            prompt = Prompt::None;
         }
         break;
 
