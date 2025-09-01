@@ -19,7 +19,6 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-// This helper function now also provides the base AppData path for runFzf
 inline std::string getAppDataDir() {
     static std::string appDataDir = [] {
         PWSTR path = NULL;
@@ -171,7 +170,7 @@ inline void runFileFromTerm(const fs::path &path) {
 inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries) {
     if (entries.empty()) { return std::nullopt; }
 
-    std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
+    const std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
 
     std::ofstream outFile(fzfInputFile);
     if (!outFile) { return std::nullopt; }
