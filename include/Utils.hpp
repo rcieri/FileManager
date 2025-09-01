@@ -37,9 +37,9 @@ inline std::string getAppDataDir() {
 }
 
 inline void writeToAppDataRoamingFile(const std::string &changePath) {
-    const std::string appDataDir = getAppDataDir();
-    const std::string historyFile = appDataDir + "\\history.txt";
-    const std::string historyJsonFile = appDataDir + "\\history.json";
+    static const std::string appDataDir = getAppDataDir();
+    static const std::string historyFile = appDataDir + "\\history.txt";
+    static const std::string historyJsonFile = appDataDir + "\\history.json";
 
     {
         std::ofstream outFile(historyFile);
@@ -167,14 +167,22 @@ inline void runFileFromTerm(const fs::path &path) {
     std::system(cmd.c_str());
 }
 
-inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries) {
+inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries, const fs::path &base) {
     if (entries.empty()) { return std::nullopt; }
 
     const std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
-
     std::ofstream outFile(fzfInputFile);
     if (!outFile) { return std::nullopt; }
-    for (const auto &p : entries) { outFile << p.string() << "\n"; }
+
+    for (const auto &p : entries) {
+        std::error_code ec;
+        fs::path rel = fs::relative(p, base, ec);
+        if (ec) {
+            outFile << p.string() << "\n"; // fallback to absolute
+        } else {
+            outFile << rel.string() << "\n"; // relative to base directory
+        }
+    }
     outFile.close();
 
     std::string cmd = "type \"" + fzfInputFile + "\" | fzf";
@@ -189,11 +197,14 @@ inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries) {
     if (fgets(buffer, sizeof(buffer), pipe) != nullptr) { selected = buffer; }
 
     _pclose(pipe);
-    fs::remove(fzfInputFile); // Clean up the file.
+    fs::remove(fzfInputFile);
 
     if (!selected.empty()) {
         if (selected.back() == '\n') { selected.pop_back(); }
-        if (!selected.empty()) { return fs::path(selected); }
+        if (!selected.empty()) {
+            // join base + relative
+            return base / selected;
+        }
     }
 
     return std::nullopt;
@@ -209,13 +220,10 @@ inline std::optional<fs::path> runFzf(const fs::path &path) {
     }
 
     std::vector<fs::path> entries;
+    for (auto &p : fs::recursive_directory_iterator(target)) { entries.push_back(p.path()); }
 
-    // Recursively iterate all files and directories
-    for (auto &p : fs::recursive_directory_iterator(target)) {
-        entries.push_back(p.path()); // adds both files and directories
-    }
-
-    return runFzf(entries); // Calls your existing vector version
+    // Pass target as the base for relative paths
+    return runFzf(entries, target);
 }
 
 #endif

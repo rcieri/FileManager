@@ -66,18 +66,8 @@ std::vector<std::string> FileManager::listDrives() {
 }
 
 std::vector<std::string> FileManager::listHistory() {
-    std::vector<std::string> history;
-
-    PWSTR path = NULL;
-    if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &path))) { return history; }
-
-    char buffer[MAX_PATH];
-    size_t convertedChars = 0;
-    wcstombs_s(&convertedChars, buffer, MAX_PATH, path, MAX_PATH - 1);
-    CoTaskMemFree(path);
-
-    std::string appDataDir = std::string(buffer) + "\\FileManager";
-    std::string historyFile = appDataDir + "\\history.json";
+    static const std::string appDataDir = getAppDataDir();
+    static const std::string historyFile = appDataDir + "\\history.json";
 
     std::ifstream inFile(historyFile);
     if (!inFile.is_open()) { return history; }
@@ -88,8 +78,7 @@ std::vector<std::string> FileManager::listHistory() {
 
         if (!j.is_object()) { return history; }
 
-        std::unordered_map<std::string, int> counts = j.get<std::unordered_map<std::string, int>>();
-
+        auto counts = j.get<std::unordered_map<std::string, int>>();
         std::vector<std::pair<std::string, int>> sorted(counts.begin(), counts.end());
 
         std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
@@ -97,9 +86,17 @@ std::vector<std::string> FileManager::listHistory() {
             return a.first < b.first;
         });
 
-        for (size_t i = 0; i < sorted.size() && i < 5; ++i) { history.push_back(sorted[i].first); }
-    } catch (const std::exception &e) { return history; }
-
+        for (size_t i = 0; i < sorted.size() && i < 5; ++i) {
+            fs::path absPath(sorted[i].first);
+            try {
+                fs::path rel = fs::relative(absPath, cwd);
+                history.push_back(rel.string());
+            } catch (const fs::filesystem_error &) { history.push_back(absPath.string()); }
+        }
+    } catch (const std::exception &e) {
+        error = "Error: " + std::string(e.what());
+        prompt = Prompt::Error;
+    }
     return history;
 }
 
@@ -337,22 +334,42 @@ void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
             if (ch.size() == 1) {
                 switch (ch[0]) {
                 case 'c':
-                    termCmd = TermCmds::FzfClip;
+                    termCmd = TermCmds::FzfClipFile;
                     prompt = Prompt::None;
                     screen.ExitLoopClosure()();
                     break;
                 case 'f':
-                    termCmd = TermCmds::FzfHx;
+                    termCmd = TermCmds::FzfHxFile;
                     prompt = Prompt::None;
                     screen.ExitLoopClosure()();
                     break;
                 case 'o':
-                    termCmd = TermCmds::FzfOpen;
+                    termCmd = TermCmds::FzfOpenFile;
                     prompt = Prompt::None;
                     screen.ExitLoopClosure()();
                     break;
                 case 'e':
-                    termCmd = TermCmds::FzfCd;
+                    termCmd = TermCmds::FzfCdFile;
+                    prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
+                    break;
+                case 'C':
+                    termCmd = TermCmds::FzfClipCwd;
+                    prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
+                    break;
+                case 'F':
+                    termCmd = TermCmds::FzfHxCwd;
+                    prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
+                    break;
+                case 'O':
+                    termCmd = TermCmds::FzfOpenCwd;
+                    prompt = Prompt::None;
+                    screen.ExitLoopClosure()();
+                    break;
+                case 'E':
+                    termCmd = TermCmds::FzfCdCwd;
                     prompt = Prompt::None;
                     screen.ExitLoopClosure()();
                     break;
@@ -376,56 +393,87 @@ void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
 }
 
 bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string path) {
-    switch (termCmd) {
-    case FileManager::TermCmds::Edit:
-        std::system(("hx \"" + path + "\"").c_str());
-        return false;
-    case FileManager::TermCmds::Open:
-        std::system(("start /B explorer \"" + path + "\"").c_str());
-        return false;
-    case FileManager::TermCmds::CopyToSys:
-        copyPathToClip(path);
-        return false;
-    case FileManager::TermCmds::ChangeDir:
-        writeToAppDataRoamingFile(path);
-        return true;
-    case FileManager::TermCmds::QuitToLast:
-        return true;
-    case FileManager::TermCmds::Quit:
-        writeToAppDataRoamingFile(std::string("."));
-        return true;
-    case FileManager::TermCmds::Run:
-        runFileFromTerm(path);
-        return false;
-    case FileManager::TermCmds::FzfClip:
-        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
-            copyPathToClip(selected->string());
-        }
-        return false;
-    case FileManager::TermCmds::FzfHx:
-        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
-            std::system(("hx \"" + selected->string() + "\"").c_str());
-        }
-        return false;
-    case FileManager::TermCmds::FzfOpen:
-        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
-            std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
-        }
-        return false;
-    case FileManager::TermCmds::FzfCd:
-        if (auto selected = runFzf(visibleEntries[selIdx].path)) {
-            if (fs::is_directory(*selected)) {
-                writeToAppDataRoamingFile(selected->string());
-                return true;
-
-            } else {
-                writeToAppDataRoamingFile(selected->parent_path().string());
-                return true;
+    try {
+        switch (termCmd) {
+        case FileManager::TermCmds::Edit:
+            std::system(("hx \"" + path + "\"").c_str());
+            return false;
+        case FileManager::TermCmds::Open:
+            std::system(("start /B explorer \"" + path + "\"").c_str());
+            return false;
+        case FileManager::TermCmds::CopyToSys:
+            copyPathToClip(path);
+            return false;
+        case FileManager::TermCmds::ChangeDir:
+            writeToAppDataRoamingFile(path);
+            return true;
+        case FileManager::TermCmds::QuitToLast:
+            return true;
+        case FileManager::TermCmds::Quit:
+            writeToAppDataRoamingFile(std::string("."));
+            return true;
+        case FileManager::TermCmds::Run:
+            runFileFromTerm(path);
+            return false;
+        case FileManager::TermCmds::FzfClipFile:
+            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+                copyPathToClip(selected->string());
             }
+            return false;
+        case FileManager::TermCmds::FzfHxFile:
+            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+                std::system(("hx \"" + selected->string() + "\"").c_str());
+            }
+            return false;
+        case FileManager::TermCmds::FzfOpenFile:
+            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+                std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
+            }
+            return false;
+        case FileManager::TermCmds::FzfCdFile:
+            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+                if (fs::is_directory(*selected)) {
+                    writeToAppDataRoamingFile(selected->string());
+                    return true;
+
+                } else {
+                    writeToAppDataRoamingFile(selected->parent_path().string());
+                    return true;
+                }
+            }
+            return false;
+        case FileManager::TermCmds::FzfClipCwd:
+            if (auto selected = runFzf(cwd)) { copyPathToClip(selected->string()); }
+            return false;
+        case FileManager::TermCmds::FzfHxCwd:
+            if (auto selected = runFzf(cwd)) {
+                std::system(("hx \"" + selected->string() + "\"").c_str());
+            }
+            return false;
+        case FileManager::TermCmds::FzfOpenCwd:
+            if (auto selected = runFzf(cwd)) {
+                std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
+            }
+            return false;
+        case FileManager::TermCmds::FzfCdCwd:
+            if (auto selected = runFzf(cwd)) {
+                if (fs::is_directory(*selected)) {
+                    writeToAppDataRoamingFile(selected->string());
+                    return true;
+
+                } else {
+                    writeToAppDataRoamingFile(selected->parent_path().string());
+                    return true;
+                }
+            }
+            return false;
+        default:
+            return true;
         }
+    } catch (const std::exception &e) {
+        error = "Error: " + std::string(e.what());
+        prompt = Prompt::Error;
         return false;
-    default:
-        return true;
     }
 }
 
@@ -543,10 +591,14 @@ void FileManager::promptUser(Prompt m) {
     prompt = m;
     if (prompt != Prompt::Replace) { promptPath = visibleEntries[selIdx].path; }
     if (prompt == Prompt::NewFile || prompt == Prompt::NewDir) {
-        if (!fs::is_directory(promptPath)) promptPath = promptPath.parent_path();
-        promptInput.clear();
+        if (!fs::is_directory(promptPath)) {
+            promptPath = promptPath.parent_path();
+            promptInput.clear();
+        }
     } else if (prompt == Prompt::Rename) {
         promptInput = promptPath.filename().string();
+    } else if (prompt == Prompt::Move) {
+        promptInput = promptPath.string();
     }
 }
 
@@ -559,11 +611,6 @@ void FileManager::copyToSys(ScreenInteractive &s) {
 
 void FileManager::runFile(ScreenInteractive &s) {
     termCmd = FileManager::TermCmds::Run;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::fzf(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::FzfHx;
     s.ExitLoopClosure()();
 }
 

@@ -246,8 +246,10 @@ Element UI::createHelpOverlay(const Element &main_view) {
 
 Element UI::createFzfMenuOverlay(const Element &main_view) {
     std::vector<std::pair<std::string, std::string>> fzf_entries = {
-        {"f", "file-picker (cwd)"},  {"f", "file-picker (edit)"}, {"o", "file-picker (open)"},
-        {"c", "file-picker (copy)"}, {"e", "dir-picker"},
+        {"f/F (file/cwd)", "file-picker (edit)"},
+        {"e/E (file/cwd)", "dir-picker (cd)"},
+        {"o/O (file/cwd)", "file-picker (open)"},
+        {"c/C (file/cwd)", "file-picker (copy)"},
     };
 
     Elements fzf_rows;
@@ -358,4 +360,24 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         }
     }
     return text(iconStr + p.filename().string()) | color(col);
+}
+UI::Layout UI::Layout::compute(int screen_width, int max_expanded_depth) {
+    Layout layout;
+    layout.total_width = screen_width;
+    layout.max_indent_width = indent_per_level * (max_expanded_depth + 1);
+
+    int fixed_columns =
+        layout.max_indent_width + icon_width + type_col_width + size_col_width + spacing * 2;
+
+    int available_for_name = screen_width - fixed_columns;
+    int upper = std::max(20, available_for_name);
+    layout.max_name_width = std::clamp(available_for_name, 10, upper);
+
+    layout.type_column = layout.max_indent_width + icon_width + layout.max_name_width + spacing;
+
+    int name_label_length = static_cast<int>(std::string("Name").length());
+    layout.spacer_width = std::max(
+        layout.type_column - (layout.max_indent_width + icon_width + name_label_length), 1);
+
+    return layout;
 }

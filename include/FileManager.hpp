@@ -37,10 +37,14 @@ class FileManager {
         Open,
         CopyToSys,
         Run,
-        FzfClip,
-        FzfHx,
-        FzfOpen,
-        FzfCd
+        FzfHxFile,
+        FzfClipFile,
+        FzfOpenFile,
+        FzfCdFile,
+        FzfHxCwd,
+        FzfClipCwd,
+        FzfOpenCwd,
+        FzfCdCwd
     };
 
     enum class Prompt {
@@ -55,7 +59,7 @@ class FileManager {
         DriveSelect,
         Help,
         History,
-        FzfMenu
+        FzfMenu,
     };
 
     struct Undo {
@@ -115,7 +119,6 @@ class FileManager {
     void copy();
     void copyToSys(ftxui::ScreenInteractive &);
     void runFile(ftxui::ScreenInteractive &);
-    void fzf(ftxui::ScreenInteractive &);
     void cut();
     std::optional<Prompt> tryPaste();
     int maxExpandedDepth() const;
