@@ -96,6 +96,8 @@ Element UI::createOverlay(const Element &main_view) {
         return createErrorOverlay(backdrop);
     case FileManager::Prompt::Help:
         return createHelpOverlay(backdrop);
+    case FileManager::Prompt::FzfMenu:
+        return createFzfMenuOverlay(main_view);
     case FileManager::Prompt::None:
     default:
         return main_view;
@@ -243,6 +245,29 @@ Element UI::createHelpOverlay(const Element &main_view) {
     return dbox({main_view | dim, center(help_window)});
 }
 
+Element UI::createFzfMenuOverlay(const Element &main_view) {
+    std::vector<std::pair<std::string, std::string>> fzf_entries = {
+        {"c", "fzf | clip"}, {"h", "hx $(fzf)"}, {"o", "start $(fzf)"},
+        {"d", "cd $(fzd)"},  {"q", "quit"},
+    };
+
+    Elements fzf_rows = {hbox({text(" [Key] ") | bold | color(Color::GrayLight),
+                               text("  Description") | bold | color(Color::GrayLight)}),
+                         separator()};
+
+    for (auto &[key, desc] : fzf_entries) {
+        fzf_rows.push_back(hbox(
+            {text(" " + key) | color(Color::Cyan), filler(), text(desc) | color(Color::White)}));
+    }
+
+    auto fzf_window =
+        window(text(" FZF Menu ") | bold | bgcolor(Color::DarkGreen) | color(Color::White),
+               vbox(fzf_rows)) |
+        borderRounded | bgcolor(Color::Black) | size(WIDTH, EQUAL, 50);
+
+    return dbox({main_view | dim, center(fzf_window)});
+}
+
 Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> &expandedDirs) {
     // Combined icon + color map
     static const std::unordered_map<std::string, std::pair<std::string, Color>> fileMap = {
@@ -336,25 +361,4 @@ Element UI::fileElement(const fs::path &p, bool isDir, const std::set<fs::path> 
         }
     }
     return text(iconStr + p.filename().string()) | color(col);
-}
-
-UI::Layout UI::Layout::compute(int screen_width, int max_expanded_depth) {
-    Layout layout;
-    layout.total_width = screen_width;
-    layout.max_indent_width = indent_per_level * (max_expanded_depth + 1);
-
-    int fixed_columns =
-        layout.max_indent_width + icon_width + type_col_width + size_col_width + spacing * 2;
-
-    int available_for_name = screen_width - fixed_columns;
-    int upper = std::max(20, available_for_name);
-    layout.max_name_width = std::clamp(available_for_name, 10, upper);
-
-    layout.type_column = layout.max_indent_width + icon_width + layout.max_name_width + spacing;
-
-    int name_label_length = static_cast<int>(std::string("Name").length());
-    layout.spacer_width = std::max(
-        layout.type_column - (layout.max_indent_width + icon_width + name_label_length), 1);
-
-    return layout;
 }

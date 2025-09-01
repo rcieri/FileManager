@@ -154,11 +154,11 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                 case '?':
                     promptUser(Prompt::Help);
                     break;
-                case ' ':
+                case 'R':
                     runFile(screen);
                     break;
-                case 'f':
-                    fzf(screen);
+                case ' ':
+                    promptUser(Prompt::FzfMenu);
                     break;
                 case 'r':
                     promptUser(Prompt::Rename);
@@ -331,6 +331,36 @@ void FileManager::handlePromptEvent(Event event) {
         }
         break;
 
+    case Prompt::FzfMenu:
+        if (event.is_character()) {
+            const std::string &ch = event.character();
+            if (ch.size() == 1) {
+                switch (ch[0]) {
+                case 'c':
+                    termCmd = TermCmds::FzfClip;
+                    prompt = Prompt::None;
+                    break;
+                case 'h':
+                    termCmd = TermCmds::FzfHx;
+                    prompt = Prompt::None;
+                    break;
+                case 'o':
+                    termCmd = TermCmds::FzfOpen;
+                    prompt = Prompt::None;
+                    break;
+                case 'd':
+                    termCmd = TermCmds::FzfCd;
+                    prompt = Prompt::None;
+                    break;
+                case 'q':
+                case '\x1b': // Escape
+                    prompt = Prompt::None;
+                    break;
+                }
+            }
+        }
+        break;
+
     default:
         if (event == Event::Return || event == Event::Escape)
             prompt = Prompt::None;
@@ -362,7 +392,16 @@ bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string
     case FileManager::TermCmds::Run:
         runFileFromTerm(path);
         return false;
-    case FileManager::TermCmds::Fzf:
+    case FileManager::TermCmds::FzfClip:
+        runFzf(visibleEntriesPaths());
+        return false;
+    case FileManager::TermCmds::FzfHx:
+        runFzf(visibleEntriesPaths());
+        return false;
+    case FileManager::TermCmds::FzfOpen:
+        runFzf(visibleEntriesPaths());
+        return false;
+    case FileManager::TermCmds::FzfCd:
         runFzf(visibleEntriesPaths());
         return false;
     default:
@@ -504,7 +543,7 @@ void FileManager::runFile(ScreenInteractive &s) {
 }
 
 void FileManager::fzf(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::Fzf;
+    termCmd = FileManager::TermCmds::FzfHx;
     s.ExitLoopClosure()();
 }
 

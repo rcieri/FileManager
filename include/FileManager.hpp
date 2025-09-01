@@ -37,7 +37,10 @@ class FileManager {
         Open,
         CopyToSys,
         Run,
-        Fzf,
+        FzfClip,
+        FzfHx,
+        FzfOpen,
+        FzfCd
     };
 
     enum class Prompt {
@@ -51,7 +54,8 @@ class FileManager {
         Error,
         DriveSelect,
         Help,
-        History
+        History,
+        FzfMenu
     };
 
     struct Undo {
