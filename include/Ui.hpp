@@ -1,8 +1,6 @@
 #ifndef UI_HPP_
 #define UI_HPP_
 
-#define NOMINMAX
-
 #include "FileManager.hpp"
 #include "Utils.hpp"
 #include <algorithm>
@@ -35,27 +33,7 @@ class UI {
         static constexpr int size_col_width = 9;
         static constexpr int spacing = 5;
 
-        static Layout compute(int screen_width, int max_expanded_depth) {
-            Layout layout;
-            layout.total_width = screen_width;
-            layout.max_indent_width = indent_per_level * (max_expanded_depth + 1);
-
-            int fixed_columns = layout.max_indent_width + icon_width + type_col_width +
-                                size_col_width + spacing * 2;
-
-            int available_for_name = screen_width - fixed_columns;
-            int upper = std::max(20, available_for_name);
-            layout.max_name_width = std::clamp(available_for_name, 10, upper);
-
-            layout.type_column =
-                layout.max_indent_width + icon_width + layout.max_name_width + spacing;
-
-            int name_label_length = static_cast<int>(std::string("Name").length());
-            layout.spacer_width = std::max(
-                layout.type_column - (layout.max_indent_width + icon_width + name_label_length), 1);
-
-            return layout;
-        }
+        static Layout compute(int screen_width, int max_expanded_depth);
     };
     ftxui::Element createPromptBox(const ftxui::Element &main_view, const std::string &title,
                                    std::optional<ftxui::Element> body_opt = std::nullopt);

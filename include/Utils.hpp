@@ -1,8 +1,6 @@
 #ifndef UTILS_HPP_
 #define UTILS_HPP_
 
-#define NOMINMAX
-
 #include <codecvt>
 #include <filesystem>
 #include <fstream>
