@@ -102,7 +102,7 @@ class FileManager {
     // Input handlers
     void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
     void handlePromptEvent(ftxui::Event, ftxui::ScreenInteractive &);
-    bool handleTermCmd(TermCmds, const std::string);
+    bool handleTermCmd(TermCmds);
     void moveSelection(int delta, ftxui::ScreenInteractive &);
     void goToParent();
     void openDir();

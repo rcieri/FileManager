@@ -14,7 +14,7 @@ int FileManager::Run() {
             return true;
         });
         screen.Loop(interactive);
-        if (handleTermCmd(termCmd, visibleEntries[selIdx].path.string())) {
+        if (handleTermCmd(termCmd)) {
             break;
         } else {
             termCmd = FileManager::TermCmds::None;
@@ -391,46 +391,51 @@ void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
     }
 }
 
-bool FileManager::handleTermCmd(FileManager::TermCmds termCmd, const std::string path) {
+bool FileManager::handleTermCmd(FileManager::TermCmds termCmd) {
+    fs::path selPath = visibleEntries[selIdx].path;
     try {
         switch (termCmd) {
         case FileManager::TermCmds::Edit:
-            std::system(("hx \"" + path + "\"").c_str());
+            std::system(("hx \"" + selPath.string() + "\"").c_str());
             return false;
         case FileManager::TermCmds::Open:
-            std::system(("start /B explorer \"" + path + "\"").c_str());
+            std::system(("start /B explorer \"" + selPath.string() + "\"").c_str());
             return false;
         case FileManager::TermCmds::CopyToSys:
-            copyPathToClip(path);
+            copyPathToClip(selPath.string());
             return false;
         case FileManager::TermCmds::ChangeDir:
-            writeToAppDataRoamingFile(path);
-            return true;
+            if (fs::is_directory(selPath)) {
+                writeToAppDataRoamingFile(selPath.string());
+                return true;
+
+            } else {
+                writeToAppDataRoamingFile(selPath.parent_path().string());
+                return true;
+            }
         case FileManager::TermCmds::QuitToLast:
             return true;
         case FileManager::TermCmds::Quit:
             writeToAppDataRoamingFile(std::string("."));
             return true;
         case FileManager::TermCmds::Run:
-            runFileFromTerm(path);
+            runFileFromTerm(selPath.string());
             return false;
         case FileManager::TermCmds::FzfClipFile:
-            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
-                copyPathToClip(selected->string());
-            }
+            if (auto selected = runFzf(selPath)) { copyPathToClip(selected->string()); }
             return false;
         case FileManager::TermCmds::FzfHxFile:
-            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            if (auto selected = runFzf(selPath)) {
                 std::system(("hx \"" + selected->string() + "\"").c_str());
             }
             return false;
         case FileManager::TermCmds::FzfOpenFile:
-            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            if (auto selected = runFzf(selPath)) {
                 std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
             }
             return false;
         case FileManager::TermCmds::FzfCdFile:
-            if (auto selected = runFzf(visibleEntries[selIdx].path)) {
+            if (auto selected = runFzf(selPath)) {
                 if (fs::is_directory(*selected)) {
                     writeToAppDataRoamingFile(selected->string());
                     return true;
