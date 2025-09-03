@@ -130,19 +130,24 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                     openDir();
                     break;
                 case 'e':
-                    editFile(screen);
+                    termCmd = FileManager::TermCmds::Edit;
+                    screen.ExitLoopClosure()();
                     break;
                 case 'o':
-                    openFile(screen);
+                    termCmd = FileManager::TermCmds::Open;
+                    screen.ExitLoopClosure()();
                     break;
                 case '\x03':
-                    quit(screen);
+                    termCmd = FileManager::TermCmds::Quit;
+                    screen.ExitLoopClosure()();
                     break;
                 case 'q':
-                    quitToLast(screen);
+                    termCmd = FileManager::TermCmds::QuitToLast;
+                    screen.ExitLoopClosure()();
                     break;
                 case 'c':
-                    changeDir(screen);
+                    termCmd = FileManager::TermCmds::ChangeDir;
+                    screen.ExitLoopClosure()();
                     break;
                 case 'C':
                     changeDrive(screen);
@@ -151,7 +156,8 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                     promptUser(Prompt::Help);
                     break;
                 case 'R':
-                    runFile(screen);
+                    termCmd = FileManager::TermCmds::Run;
+                    screen.ExitLoopClosure()();
                     break;
                 case ' ':
                     promptUser(Prompt::FzfMenu);
@@ -172,13 +178,14 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                     promptUser(Prompt::NewDir);
                     break;
                 case 'y':
-                    copy();
+                    copyPath = visibleEntries[selIdx].path;
                     break;
                 case 'Y':
-                    copyToSys(screen);
+                    termCmd = FileManager::TermCmds::CopyToSys;
+                    screen.ExitLoopClosure()();
                     break;
                 case 'x':
-                    cut();
+                    cutPath = visibleEntries[selIdx].path;
                     break;
                 case 'p':
                     if (std::optional<Prompt> result = tryPaste()) { promptUser(*result); }
@@ -192,7 +199,8 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
         } else if (event == Event::Return) {
             toggleExpand();
         } else if (event == Event::Escape) {
-            collapseAll();
+            expandedDirs.clear();
+            refresh();
         } else if (event == Event::ArrowUp) {
             changeDirFromHistory(screen);
         }
@@ -396,81 +404,55 @@ bool FileManager::handleTermCmd(FileManager::TermCmds termCmd) {
     try {
         switch (termCmd) {
         case FileManager::TermCmds::Edit:
-            std::system(("hx \"" + selPath.string() + "\"").c_str());
-            return false;
+            return !edit(selPath.string());
         case FileManager::TermCmds::Open:
-            std::system(("start /B explorer \"" + selPath.string() + "\"").c_str());
-            return false;
+            return !start(selPath.string());
         case FileManager::TermCmds::CopyToSys:
-            copyPathToClip(selPath.string());
-            return false;
+            return !copyPathToClip(selPath.string());
         case FileManager::TermCmds::ChangeDir:
-            if (fs::is_directory(selPath)) {
-                writeToAppDataRoamingFile(selPath.string());
-                return true;
-
-            } else {
-                writeToAppDataRoamingFile(selPath.parent_path().string());
-                return true;
-            }
+            return changeDir(selPath);
         case FileManager::TermCmds::QuitToLast:
             return true;
         case FileManager::TermCmds::Quit:
             writeToAppDataRoamingFile(std::string("."));
             return true;
         case FileManager::TermCmds::Run:
-            runFileFromTerm(selPath.string());
-            return false;
+            return !runFileFromTerm(selPath.string());
         case FileManager::TermCmds::FzfClipFile:
-            if (auto selected = runFzf(selPath)) { copyPathToClip(selected->string()); }
+            if (std::optional<fs::path> selected = runFzf(selPath)) {
+                copyPathToClip(selected->string());
+            }
             return false;
         case FileManager::TermCmds::FzfHxFile:
-            if (auto selected = runFzf(selPath)) {
-                std::system(("hx \"" + selected->string() + "\"").c_str());
+            if (std::optional<fs::path> selected = runFzf(selPath)) {
+                return !edit(selected->string());
             }
             return false;
         case FileManager::TermCmds::FzfOpenFile:
-            if (auto selected = runFzf(selPath)) {
-                std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
+            if (std::optional<fs::path> selected = runFzf(selPath)) {
+                return !start(selected->string());
             }
             return false;
         case FileManager::TermCmds::FzfCdFile:
-            if (auto selected = runFzf(selPath)) {
-                if (fs::is_directory(*selected)) {
-                    writeToAppDataRoamingFile(selected->string());
-                    return true;
-
-                } else {
-                    writeToAppDataRoamingFile(selected->parent_path().string());
-                    return true;
-                }
-            }
+            if (std::optional<fs::path> selected = runFzf(selPath)) { return !changeDir(selPath); }
             return false;
         case FileManager::TermCmds::FzfClipCwd:
-            if (auto selected = runFzf(cwd)) { copyPathToClip(selected->string()); }
+            if (std::optional<fs::path> selected = runFzf(cwd)) {
+                return !copyPathToClip(selected->string());
+            }
             return false;
         case FileManager::TermCmds::FzfHxCwd:
-            if (auto selected = runFzf(cwd)) {
-                std::system(("hx \"" + selected->string() + "\"").c_str());
+            if (std::optional<fs::path> selected = runFzf(cwd)) {
+                return !edit(selected->string());
             }
             return false;
         case FileManager::TermCmds::FzfOpenCwd:
-            if (auto selected = runFzf(cwd)) {
-                std::system(("start /B explorer \"" + selected->string() + "\"").c_str());
+            if (std::optional<fs::path> selected = runFzf(cwd)) {
+                return !start(selected->string());
             }
             return false;
         case FileManager::TermCmds::FzfCdCwd:
-            if (auto selected = runFzf(cwd)) {
-                if (fs::is_directory(*selected)) {
-                    writeToAppDataRoamingFile(selected->string());
-                    return true;
-
-                } else {
-                    writeToAppDataRoamingFile(selected->parent_path().string());
-                    return true;
-                }
-            }
-            return false;
+            return changeDir(selPath);
         default:
             return true;
         }
@@ -542,36 +524,6 @@ void FileManager::toggleExpand() {
     refresh();
 }
 
-void FileManager::collapseAll() {
-    expandedDirs.clear();
-    refresh();
-}
-
-void FileManager::editFile(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::Edit;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::openFile(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::Open;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::quit(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::Quit;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::quitToLast(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::QuitToLast;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::changeDir(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::ChangeDir;
-    s.ExitLoopClosure()();
-}
-
 void FileManager::changeDrive(ScreenInteractive &) {
     drives = listDrives();
     selDriveIdx = 0;
@@ -606,20 +558,6 @@ void FileManager::promptUser(Prompt m) {
         promptInput = promptPath.string();
     }
 }
-
-void FileManager::copy() { copyPath = visibleEntries[selIdx].path; }
-
-void FileManager::copyToSys(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::CopyToSys;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::runFile(ScreenInteractive &s) {
-    termCmd = FileManager::TermCmds::Run;
-    s.ExitLoopClosure()();
-}
-
-void FileManager::cut() { cutPath = visibleEntries[selIdx].path; }
 
 std::optional<FileManager::Prompt> FileManager::tryPaste() {
     if (!copyPath && !cutPath) {

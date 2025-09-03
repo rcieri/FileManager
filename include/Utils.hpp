@@ -68,6 +68,28 @@ inline void writeToAppDataRoamingFile(const std::string &changePath) {
     }
 }
 
+inline bool edit(const std::string &arg) {
+    std::system(("hx \"" + arg + "\"").c_str());
+    return true;
+}
+
+inline bool start(const std::string &arg) {
+    std::system(("start /B explorer \"" + arg + "\"").c_str());
+    return true;
+}
+
+inline bool changeDir(const fs::path &arg) {
+    if (fs::is_directory(arg)) {
+        writeToAppDataRoamingFile(arg.string());
+        return true;
+
+    } else {
+        writeToAppDataRoamingFile(arg.parent_path().string());
+        return true;
+    }
+    return false;
+}
+
 inline bool copyPathToClip(const std::string &utf8Path) {
     if (!OpenClipboard(nullptr)) { return false; }
     EmptyClipboard();
@@ -153,8 +175,8 @@ inline void deleteFilOrDir(const fs::path &p) {
         fs::remove(p);
 }
 
-inline void runFileFromTerm(const fs::path &path) {
-    if (!fs::exists(path)) { return; }
+inline bool runFileFromTerm(const fs::path &path) {
+    if (!fs::exists(path)) { return true; }
 
     std::string cmd;
     std::string ext = path.extension().string();
@@ -165,6 +187,7 @@ inline void runFileFromTerm(const fs::path &path) {
         cmd = "start \"\" \"" + path.string() + "\"";
     }
     std::system(cmd.c_str());
+    return true;
 }
 
 inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries, const fs::path &base) {
