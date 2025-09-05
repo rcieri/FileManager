@@ -27,10 +27,8 @@ int FileManager::Run() {
             return true;
         });
 
-        // Use Loop with a custom exit condition
         screen.Loop(interactive);
 
-        // Check the needsRefresh flag
         std::unique_lock<std::mutex> lock(mtx);
         if (needsRefresh) { needsRefresh = false; }
 
@@ -42,7 +40,6 @@ int FileManager::Run() {
         }
     }
 
-    // Join the thread when exiting the application
     quitThread = true;
     cv.notify_one();
     if (refreshThread.joinable()) { refreshThread.join(); }

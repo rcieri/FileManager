@@ -28,8 +28,6 @@ class FileManager {
         refresh();
         inputBox = ftxui::Input(&promptInput, "");
         promptContainer = ftxui::Container::Vertical({inputBox});
-        history = listHistory();
-        drives = listDrives();
     }
 
     enum class TermCmds {
