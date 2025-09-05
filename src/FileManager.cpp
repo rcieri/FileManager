@@ -53,49 +53,60 @@ void FileManager::buildTree(const fs::path &path, int depth) {
     }
 }
 
-std::vector<std::string> FileManager::listDrives() {
-    std::vector<std::string> drives;
-    DWORD mask = GetLogicalDrives();
-    char drive = 'A';
-    while (mask) {
-        if (mask & 1) drives.push_back(std::string(1, drive) + ":\\");
-        mask >>= 1;
-        drive++;
+const std::vector<std::string> &FileManager::listDrives() {
+    if (drives.empty()) {
+        DWORD mask = GetLogicalDrives();
+        char drive = 'A';
+
+        while (mask) {
+            if (mask & 1) {
+                std::string rootPath = std::string(1, drive) + ":\\";
+                char volumeName[MAX_PATH + 1] = {0};
+
+                if (GetVolumeInformationA(rootPath.c_str(), volumeName, sizeof(volumeName), nullptr,
+                                          nullptr, nullptr, nullptr, 0)) {
+                    drives.push_back(rootPath + " " + volumeName);
+                } else {
+                    drives.push_back(rootPath);
+                }
+            }
+            mask >>= 1;
+            drive++;
+        }
     }
     return drives;
 }
 
-std::vector<std::string> FileManager::listHistory() {
-    std::vector<std::string> history;
-    static const std::string appDataDir = getAppDataDir();
-    static const std::string historyFile = appDataDir + "\\history.json";
+const std::vector<std::string> &FileManager::listHistory() {
+    if (history.empty()) {
+        static const std::string appDataDir = getAppDataDir();
+        static const std::string historyFile = appDataDir + "\\history.json";
 
-    std::ifstream inFile(historyFile);
-    if (!inFile.is_open()) { return history; }
+        std::ifstream inFile(historyFile);
+        if (!inFile.is_open()) return history;
 
-    try {
-        json j;
-        inFile >> j;
+        try {
+            json j;
+            inFile >> j;
+            if (!j.is_object()) return history;
 
-        if (!j.is_object()) { return history; }
+            auto counts = j.get<std::unordered_map<std::string, int>>();
+            std::vector<std::pair<std::string, int>> sorted(counts.begin(), counts.end());
 
-        auto counts = j.get<std::unordered_map<std::string, int>>();
-        std::vector<std::pair<std::string, int>> sorted(counts.begin(), counts.end());
+            std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
+                if (a.second != b.second) return a.second > b.second;
+                return a.first < b.first;
+            });
 
-        std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
-            if (a.second != b.second) return a.second > b.second;
-            return a.first < b.first;
-        });
-
-        for (size_t i = 0; i < sorted.size() && i < 5; ++i) {
-            fs::path absPath(sorted[i].first);
-            history.push_back(absPath.string()); // always absolute
+            for (size_t i = 0; i < sorted.size() && i < 5; ++i) {
+                fs::path absPath(sorted[i].first);
+                history.push_back(absPath.string());
+            }
+        } catch (const std::exception &e) {
+            error = "Error: " + std::string(e.what());
+            prompt = Prompt::Error;
         }
-    } catch (const std::exception &e) {
-        error = "Error: " + std::string(e.what());
-        prompt = Prompt::Error;
     }
-
     return history;
 }
 

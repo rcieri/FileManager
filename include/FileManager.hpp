@@ -25,6 +25,8 @@ class FileManager {
         refresh();
         inputBox = ftxui::Input(&promptInput, "");
         promptContainer = ftxui::Container::Vertical({inputBox});
+        history = listHistory();
+        drives = listDrives();
     }
 
     enum class TermCmds {
@@ -78,7 +80,8 @@ class FileManager {
     ftxui::Component inputBox, promptContainer;
     std::vector<Entry> visibleEntries;
     std::set<fs::path> expandedDirs, selItems;
-    std::vector<std::string> drives, history;
+    std::vector<std::string> drives;
+    std::vector<std::string> history;
     size_t selIdx = 0;
     std::vector<size_t> parentIdxs;
     size_t scrollOffset = 0;
@@ -94,8 +97,8 @@ class FileManager {
     int Run();
     void refresh();
     void buildTree(const fs::path &, int);
-    std::vector<std::string> listDrives();
-    std::vector<std::string> listHistory();
+    const std::vector<std::string> &listDrives();
+    const std::vector<std::string> &listHistory();
     std::vector<fs::path> visibleEntriesPaths() const;
     int maxExpandedDepth() const;
 
