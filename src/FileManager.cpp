@@ -4,8 +4,21 @@
 
 using namespace ftxui;
 
+void FileManager::refreshInThread() {
+    while (!quitThread) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        std::unique_lock<std::mutex> lock(mtx);
+        refresh();
+        cv.notify_one();
+    }
+}
+
 int FileManager::Run() {
     UI ui(*this);
+
+    refreshThread = std::thread(&FileManager::refreshInThread, this);
+
     while (true) {
         ScreenInteractive screen = ScreenInteractive::Fullscreen();
         auto renderer = Renderer([&ui, &screen] { return ui.render(screen); });
@@ -13,7 +26,14 @@ int FileManager::Run() {
             handleEvent(e, screen);
             return true;
         });
+
+        // Use Loop with a custom exit condition
         screen.Loop(interactive);
+
+        // Check the needsRefresh flag
+        std::unique_lock<std::mutex> lock(mtx);
+        if (needsRefresh) { needsRefresh = false; }
+
         if (handleTermCmd(termCmd)) {
             break;
         } else {
@@ -21,6 +41,11 @@ int FileManager::Run() {
             refresh();
         }
     }
+
+    // Join the thread when exiting the application
+    quitThread = true;
+    cv.notify_one();
+    if (refreshThread.joinable()) { refreshThread.join(); }
     return 0;
 }
 

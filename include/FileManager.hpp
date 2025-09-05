@@ -2,17 +2,20 @@
 #define FILEMANAGER_HPP_
 
 #include <algorithm>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <shlobj.h>
 #include <stack>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -90,6 +93,12 @@ class FileManager {
     bool clipCut = false;
     std::stack<Undo> undoStack;
 
+    std::thread refreshThread;
+    std::mutex mtx;
+    std::condition_variable cv;
+    bool needsRefresh = false;
+    bool quitThread = false;
+
     // Core methods
     int Run();
     void refresh();
@@ -113,6 +122,8 @@ class FileManager {
     void promptUser(Prompt);
     std::optional<Prompt> tryPaste();
     void undo();
+
+    void refreshInThread();
 };
 
 #endif
