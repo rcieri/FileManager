@@ -25,9 +25,9 @@ int FileManager::Run() {
 }
 
 void FileManager::refresh() {
-    visibleEntries.clear();
+    entries.clear();
     buildTree(cwd, 0);
-    if (!visibleEntries.empty()) selIdx = std::min(selIdx, visibleEntries.size() - 1);
+    if (!entries.empty()) { selIdx = std::min(selIdx, entries.size() - 1); }
 }
 
 void FileManager::buildTree(const fs::path &path, int depth) {
@@ -47,67 +47,10 @@ void FileManager::buildTree(const fs::path &path, int depth) {
     });
 
     for (auto &e : children) {
-        visibleEntries.push_back({e.path(), depth});
+        entries.push_back({e.path(), depth});
         if (fs::is_directory(e.path()) && expandedDirs.count(e.path()))
             buildTree(e.path(), depth + 1);
     }
-}
-
-const std::vector<std::string> &FileManager::listDrives() {
-    if (drives.empty()) {
-        DWORD mask = GetLogicalDrives();
-        char drive = 'A';
-
-        while (mask) {
-            if (mask & 1) {
-                std::string rootPath = std::string(1, drive) + ":\\";
-                char volumeName[MAX_PATH + 1] = {0};
-
-                if (GetVolumeInformationA(rootPath.c_str(), volumeName, sizeof(volumeName), nullptr,
-                                          nullptr, nullptr, nullptr, 0)) {
-                    drives.push_back(rootPath + " " + volumeName);
-                } else {
-                    drives.push_back(rootPath);
-                }
-            }
-            mask >>= 1;
-            drive++;
-        }
-    }
-    return drives;
-}
-
-const std::vector<std::string> &FileManager::listHistory() {
-    if (history.empty()) {
-        static const std::string appDataDir = getAppDataDir();
-        static const std::string historyFile = appDataDir + "\\history.json";
-
-        std::ifstream inFile(historyFile);
-        if (!inFile.is_open()) return history;
-
-        try {
-            json j;
-            inFile >> j;
-            if (!j.is_object()) return history;
-
-            auto counts = j.get<std::unordered_map<std::string, int>>();
-            std::vector<std::pair<std::string, int>> sorted(counts.begin(), counts.end());
-
-            std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
-                if (a.second != b.second) return a.second > b.second;
-                return a.first < b.first;
-            });
-
-            for (size_t i = 0; i < sorted.size() && i < 5; ++i) {
-                fs::path absPath(sorted[i].first);
-                history.push_back(absPath.string());
-            }
-        } catch (const std::exception &e) {
-            error = "Error: " + std::string(e.what());
-            prompt = Prompt::Error;
-        }
-    }
-    return history;
 }
 
 // --- Input handling ---
@@ -189,20 +132,22 @@ void FileManager::handleEvent(Event event, ScreenInteractive &screen) {
                     promptUser(Prompt::NewDir);
                     break;
                 case 'y':
-                    copyPath = visibleEntries[selIdx].path;
+                    copyPath = entries[selIdx].path;
                     break;
                 case 'Y':
                     termCmd = FileManager::TermCmds::CopyToSys;
                     screen.ExitLoopClosure()();
                     break;
                 case 'x':
-                    cutPath = visibleEntries[selIdx].path;
+                    cutPath = entries[selIdx].path;
                     break;
                 case 'p':
                     if (std::optional<Prompt> result = tryPaste()) { promptUser(*result); }
                     break;
                 case 'u':
                     undo();
+                case 'v':
+                    handleMode(Mode::Selection, event, screen);
                 default:
                     break;
                 }
@@ -229,7 +174,7 @@ void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
         else if (event == Event::Character("j"))
             selDriveIdx = (selDriveIdx + 1) % drives.size();
         else if (event == Event::Return) {
-            cwd = fs::path(drives[selDriveIdx]);
+            cwd = fs::path(drives[selDriveIdx].path);
             expandedDirs.clear();
             expandedDirs.insert(cwd);
             refresh();
@@ -410,8 +355,39 @@ void FileManager::handlePromptEvent(Event event, ScreenInteractive &screen) {
     }
 }
 
+void FileManager::handleMode(FileManager::Mode mode, Event event, ScreenInteractive &screen) {
+    switch (mode) {
+    case Mode::Selection:
+        if (event.is_character()) {
+            const std::string &ch = event.character();
+            if (ch.size() == 1) {
+                switch (ch[0]) {
+                case 'j':
+                    moveSelection(1, screen);
+                case 'k':
+                    moveSelection(-1, screen);
+                case 'J':
+                    moveSelection(4, screen);
+                case 'K':
+                    moveSelection(-4, screen);
+                case 'h':
+                    goToParent();
+                case 'l':
+                    openDir();
+                case ' ':
+                    toggleSelect();
+                case '\x1b':
+                    mode = Mode::Normal;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+}
+
 bool FileManager::handleTermCmd(FileManager::TermCmds termCmd) {
-    fs::path selPath = visibleEntries[selIdx].path;
+    fs::path selPath = entries[selIdx].path;
     try {
         switch (termCmd) {
         case FileManager::TermCmds::Edit:
@@ -476,12 +452,12 @@ bool FileManager::handleTermCmd(FileManager::TermCmds termCmd) {
 
 // --- Actions ---
 void FileManager::moveSelection(int delta, ScreenInteractive &screen) {
-    if (visibleEntries.empty()) return;
+    if (entries.empty()) return;
 
     int idx = static_cast<int>(selIdx) + delta;
     if (idx < 0) {
-        idx = visibleEntries.size() - 1;
-    } else if (idx >= static_cast<int>(visibleEntries.size())) {
+        idx = entries.size() - 1;
+    } else if (idx >= static_cast<int>(entries.size())) {
         idx = 0;
     }
     selIdx = idx;
@@ -494,8 +470,8 @@ void FileManager::moveSelection(int delta, ScreenInteractive &screen) {
         scrollOffset = selIdx - max_height + 1;
     }
 
-    if (scrollOffset + max_height > visibleEntries.size()) {
-        scrollOffset = visibleEntries.size() > max_height ? visibleEntries.size() - max_height : 0;
+    if (scrollOffset + max_height > entries.size()) {
+        scrollOffset = entries.size() > max_height ? entries.size() - max_height : 0;
     }
 }
 
@@ -516,7 +492,7 @@ void FileManager::goToParent() {
 
 void FileManager::openDir() {
     parentIdxs.push_back(selIdx);
-    auto &p = visibleEntries[selIdx].path;
+    auto &p = entries[selIdx].path;
     selIdx = 0;
     scrollOffset = 0;
     if (fs::is_directory(p)) {
@@ -526,7 +502,7 @@ void FileManager::openDir() {
 }
 
 void FileManager::toggleExpand() {
-    auto &p = visibleEntries[selIdx].path;
+    auto &p = entries[selIdx].path;
     if (!fs::is_directory(p)) return;
     if (expandedDirs.count(p))
         expandedDirs.erase(p);
@@ -548,7 +524,7 @@ void FileManager::changeDirFromHistory(ScreenInteractive &) {
 }
 
 void FileManager::toggleSelect() {
-    auto p = visibleEntries[selIdx].path;
+    auto p = entries[selIdx].path;
     if (selItems.count(p))
         selItems.erase(p);
     else
@@ -557,7 +533,7 @@ void FileManager::toggleSelect() {
 
 void FileManager::promptUser(Prompt m) {
     prompt = m;
-    if (prompt != Prompt::Replace) { promptPath = visibleEntries[selIdx].path; }
+    if (prompt != Prompt::Replace) { promptPath = entries[selIdx].path; }
     if (prompt == Prompt::NewFile || prompt == Prompt::NewDir) {
         if (!fs::is_directory(promptPath)) {
             promptPath = promptPath.parent_path();
@@ -597,7 +573,7 @@ std::optional<FileManager::Prompt> FileManager::tryPaste() {
 
 int FileManager::maxExpandedDepth() const {
     int maxDepth = 0;
-    for (auto &entry : visibleEntries) {
+    for (auto &entry : entries) {
         if (fs::is_directory(entry.path) && expandedDirs.count(entry.path)) {
             maxDepth = std::max(maxDepth, entry.depth);
         }
@@ -639,8 +615,8 @@ void FileManager::undo() {
     refresh();
 }
 
-std::vector<fs::path> FileManager::visibleEntriesPaths() const {
+std::vector<fs::path> FileManager::entriesPaths() const {
     std::vector<fs::path> paths;
-    for (auto &e : visibleEntries) paths.push_back(e.path);
+    for (auto &e : entries) paths.push_back(e.path);
     return paths;
 }

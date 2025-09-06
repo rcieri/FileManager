@@ -23,10 +23,10 @@ Element UI::render(ScreenInteractive &screen) {
     // File list rows
     size_t max_height = screen.dimy() - 3;
     size_t start = _fm.scrollOffset;
-    size_t end = std::min(_fm.scrollOffset + max_height, _fm.visibleEntries.size());
+    size_t end = std::min(_fm.scrollOffset + max_height, _fm.entries.size());
 
     for (size_t i = start; i < end; ++i) {
-        auto [p, depth] = _fm.visibleEntries[i];
+        auto [p, depth] = _fm.entries[i];
         bool isDir = fs::is_directory(p);
         Element fileElem = UI::fileElement(p, isDir, _fm.expandedDirs);
 
@@ -128,7 +128,7 @@ Element UI::createDriveSelectOverlay(const Element &main_view) {
 
     Elements drive_rows;
     for (size_t i = 0; i < _fm.drives.size(); ++i) {
-        auto drive = text(" " + _fm.drives[i] + " ");
+        auto drive = text(" " + _fm.drives[i].path + " " + _fm.drives[i].name + " ");
         if (i == _fm.selDriveIdx) {
             drive = drive | bgcolor(Color::BlueLight) | color(Color::Black) | bold;
         }

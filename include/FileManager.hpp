@@ -17,14 +17,15 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+using namespace ftxui;
 
 class FileManager {
   public:
     FileManager() : cwd(fs::current_path()) {
         expandedDirs.insert(cwd);
-        refresh();
         inputBox = ftxui::Input(&promptInput, "");
         promptContainer = ftxui::Container::Vertical({inputBox});
+        refresh();
     }
 
     enum class TermCmds {
@@ -61,6 +62,11 @@ class FileManager {
         FzfMenu,
     };
 
+    enum class Mode {
+        Normal,
+        Selection
+    };
+
     struct Undo {
         Prompt type;
         fs::path source;
@@ -73,43 +79,48 @@ class FileManager {
         int depth;
     };
 
+    struct Drive {
+        std::string path;
+        std::string name;
+    };
+
     fs::path cwd, promptPath;
+    std::vector<Entry> entries;
     std::string promptInput, error;
-    ftxui::Component inputBox, promptContainer;
-    std::vector<Entry> visibleEntries;
+    Component inputBox, promptContainer;
     std::set<fs::path> expandedDirs, selItems;
-    std::vector<std::string> drives;
     std::vector<std::string> history;
-    size_t selIdx = 0;
+    std::vector<Drive> drives;
     std::vector<size_t> parentIdxs;
+    size_t selIdx = 0;
     size_t scrollOffset = 0;
     int selDriveIdx = 0;
     int selHistIdx = 0;
     TermCmds termCmd = TermCmds::None;
     Prompt prompt = Prompt::None;
+    Mode mode = Mode::Normal;
     std::optional<fs::path> copyPath, cutPath;
-    bool clipCut = false;
     std::stack<Undo> undoStack;
+    bool clipCut = false;
 
     // Core methods
     int Run();
     void refresh();
     void buildTree(const fs::path &, int);
-    const std::vector<std::string> &listDrives();
-    const std::vector<std::string> &listHistory();
-    std::vector<fs::path> visibleEntriesPaths() const;
+    std::vector<fs::path> entriesPaths() const;
     int maxExpandedDepth() const;
 
     // Input handlers
-    void handleEvent(ftxui::Event, ftxui::ScreenInteractive &);
-    void handlePromptEvent(ftxui::Event, ftxui::ScreenInteractive &);
+    void handleEvent(Event, ScreenInteractive &);
+    void handlePromptEvent(Event, ScreenInteractive &);
+    void handleMode(Mode, Event, ScreenInteractive &);
     bool handleTermCmd(TermCmds);
-    void moveSelection(int delta, ftxui::ScreenInteractive &);
+    void moveSelection(int delta, ScreenInteractive &);
     void goToParent();
     void openDir();
     void toggleExpand();
-    void changeDrive(ftxui::ScreenInteractive &);
-    void changeDirFromHistory(ftxui::ScreenInteractive &);
+    void changeDrive(ScreenInteractive &);
+    void changeDirFromHistory(ScreenInteractive &);
     void toggleSelect();
     void promptUser(Prompt);
     std::optional<Prompt> tryPaste();

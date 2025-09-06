@@ -1,6 +1,7 @@
 #ifndef UTILS_HPP_
 #define UTILS_HPP_
 
+#include "FileManager.hpp"
 #include <codecvt>
 #include <cstdio>
 #include <filesystem>
@@ -106,6 +107,166 @@ inline bool copyPathToClip(const std::string &utf8Path) {
     return true;
 }
 
+inline std::vector<FileManager::Drive> listDrives() {
+    static std::vector<FileManager::Drive> drives;
+    DWORD mask = GetLogicalDrives();
+    char drive = 'A';
+
+    if (drives.empty()) {
+        while (mask) {
+            if (mask & 1) {
+                std::string rootPath = std::string(1, drive) + ":\\";
+                char volumeName[MAX_PATH + 1] = {0};
+
+                FileManager::Drive d;
+                d.path = rootPath;
+
+                if (GetVolumeInformationA(rootPath.c_str(), volumeName, sizeof(volumeName), nullptr,
+                                          nullptr, nullptr, nullptr, 0)) {
+                    d.name = volumeName;
+                } else {
+                    d.name.clear();
+                }
+
+                drives.push_back(std::move(d));
+            }
+            mask >>= 1;
+            drive++;
+        }
+    }
+    return drives;
+}
+
+inline std::vector<std::string> listHistory() {
+    static std::vector<std::string> history;
+    if (history.empty()) {
+        static const std::string appDataDir = getAppDataDir();
+        static const std::string historyFile = appDataDir + "\\history.json";
+
+        std::ifstream inFile(historyFile);
+        if (!inFile.is_open()) return history;
+
+        json j;
+        inFile >> j;
+        if (!j.is_object()) return history;
+
+        auto counts = j.get<std::unordered_map<std::string, int>>();
+        std::vector<std::pair<std::string, int>> sorted(counts.begin(), counts.end());
+        std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
+            if (a.second != b.second) return a.second > b.second;
+            return a.first < b.first;
+        });
+
+        for (size_t i = 0; i < sorted.size() && i < 5; ++i) {
+            fs::path absPath(sorted[i].first);
+            history.push_back(absPath.string());
+        }
+    }
+    return history;
+}
+
+inline void deleteFilOrDir(const fs::path &p) {
+    if (fs::is_directory(p))
+        fs::remove_all(p);
+    else
+        fs::remove(p);
+}
+
+inline bool runFileFromTerm(const fs::path &path) {
+    if (!fs::exists(path)) { return true; }
+
+    std::string cmd;
+    std::string ext = path.extension().string();
+
+    if (ext == ".py") {
+        cmd = "start cmd /C python \"" + path.string() + "\"";
+    } else {
+        cmd = "start \"\" \"" + path.string() + "\"";
+    }
+    std::system(cmd.c_str());
+    return true;
+}
+
+inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries, const fs::path &base) {
+    if (entries.empty()) { return std::nullopt; }
+
+    const std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
+    std::ofstream outFile(fzfInputFile);
+    if (!outFile) { return std::nullopt; }
+
+    for (const auto &p : entries) {
+        std::error_code ec;
+        fs::path rel = fs::relative(p, base, ec);
+        if (ec) {
+            outFile << p.string() << "\n";
+        } else {
+            outFile << rel.string() << "\n";
+        }
+    }
+    outFile.close();
+
+    std::string cmd = "type \"" + fzfInputFile + "\" | fzf";
+    FILE *pipe = _popen(cmd.c_str(), "r");
+    if (!pipe) {
+        fs::remove(fzfInputFile);
+        return std::nullopt;
+    }
+
+    char buffer[1024];
+    std::string selected;
+    if (fgets(buffer, sizeof(buffer), pipe) != nullptr) { selected = buffer; }
+
+    _pclose(pipe);
+    fs::remove(fzfInputFile);
+
+    if (!selected.empty()) {
+        if (selected.back() == '\n') { selected.pop_back(); }
+        if (!selected.empty()) {
+            // join base + relative
+            return base / selected;
+        }
+    }
+
+    return std::nullopt;
+}
+
+inline std::optional<fs::path> runFzf(const fs::path &path) {
+    fs::path target = path;
+
+    if (!fs::exists(target) || !fs::is_directory(target)) {
+        target = target.parent_path();
+        if (target.empty() || !fs::exists(target)) return std::nullopt;
+    }
+
+    std::vector<fs::path> entries;
+    for (auto &p : fs::recursive_directory_iterator(target)) { entries.push_back(p.path()); }
+
+    return runFzf(entries, target);
+}
+
+namespace fs = std::filesystem;
+
+inline std::string formatHistoryPath(const fs::path &absPath, const fs::path &cwd) {
+    try {
+        // 1. Try relative to cwd
+        fs::path relToCwd = fs::relative(absPath, cwd);
+        if (!relToCwd.empty() && relToCwd.string().find("..") != 0) { return relToCwd.string(); }
+    } catch (const fs::filesystem_error &) {}
+
+    try {
+        const char *homeEnv = std::getenv("USERPROFILE");
+        if (homeEnv) {
+            fs::path home(homeEnv);
+            fs::path relToHome = fs::relative(absPath, home);
+            if (!relToHome.empty() && relToHome.string().find("..") != 0) {
+                return std::string("~\\") + relToHome.string();
+            }
+        }
+    } catch (const fs::filesystem_error &) {}
+
+    return absPath.string();
+}
+
 inline std::string getFileTypeString(const fs::path &p) {
     std::error_code ec;
 
@@ -166,110 +327,6 @@ inline std::string getFileSizeString(const fs::path &p) {
         }
     } catch (...) {}
     return "";
-}
-
-inline void deleteFilOrDir(const fs::path &p) {
-    if (fs::is_directory(p))
-        fs::remove_all(p);
-    else
-        fs::remove(p);
-}
-
-inline bool runFileFromTerm(const fs::path &path) {
-    if (!fs::exists(path)) { return true; }
-
-    std::string cmd;
-    std::string ext = path.extension().string();
-
-    if (ext == ".py") {
-        cmd = "start cmd /C python \"" + path.string() + "\"";
-    } else {
-        cmd = "start \"\" \"" + path.string() + "\"";
-    }
-    std::system(cmd.c_str());
-    return true;
-}
-
-inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries, const fs::path &base) {
-    if (entries.empty()) { return std::nullopt; }
-
-    const std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
-    std::ofstream outFile(fzfInputFile);
-    if (!outFile) { return std::nullopt; }
-
-    for (const auto &p : entries) {
-        std::error_code ec;
-        fs::path rel = fs::relative(p, base, ec);
-        if (ec) {
-            outFile << p.string() << "\n"; // fallback to absolute
-        } else {
-            outFile << rel.string() << "\n"; // relative to base directory
-        }
-    }
-    outFile.close();
-
-    std::string cmd = "type \"" + fzfInputFile + "\" | fzf";
-    FILE *pipe = _popen(cmd.c_str(), "r");
-    if (!pipe) {
-        fs::remove(fzfInputFile);
-        return std::nullopt;
-    }
-
-    char buffer[1024];
-    std::string selected;
-    if (fgets(buffer, sizeof(buffer), pipe) != nullptr) { selected = buffer; }
-
-    _pclose(pipe);
-    fs::remove(fzfInputFile);
-
-    if (!selected.empty()) {
-        if (selected.back() == '\n') { selected.pop_back(); }
-        if (!selected.empty()) {
-            // join base + relative
-            return base / selected;
-        }
-    }
-
-    return std::nullopt;
-}
-
-inline std::optional<fs::path> runFzf(const fs::path &path) {
-    fs::path target = path;
-
-    // If not a directory, use parent
-    if (!fs::exists(target) || !fs::is_directory(target)) {
-        target = target.parent_path();
-        if (target.empty() || !fs::exists(target)) return std::nullopt;
-    }
-
-    std::vector<fs::path> entries;
-    for (auto &p : fs::recursive_directory_iterator(target)) { entries.push_back(p.path()); }
-
-    // Pass target as the base for relative paths
-    return runFzf(entries, target);
-}
-
-namespace fs = std::filesystem;
-
-inline std::string formatHistoryPath(const fs::path &absPath, const fs::path &cwd) {
-    try {
-        // 1. Try relative to cwd
-        fs::path relToCwd = fs::relative(absPath, cwd);
-        if (!relToCwd.empty() && relToCwd.string().find("..") != 0) { return relToCwd.string(); }
-    } catch (const fs::filesystem_error &) {}
-
-    try {
-        const char *homeEnv = std::getenv("USERPROFILE");
-        if (homeEnv) {
-            fs::path home(homeEnv);
-            fs::path relToHome = fs::relative(absPath, home);
-            if (!relToHome.empty() && relToHome.string().find("..") != 0) {
-                return std::string("~\\") + relToHome.string();
-            }
-        }
-    } catch (const fs::filesystem_error &) {}
-
-    return absPath.string();
 }
 
 #endif
