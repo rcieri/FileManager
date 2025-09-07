@@ -55,7 +55,6 @@ Element UI::render(ScreenInteractive &screen) {
         rows.push_back(line);
     }
 
-    // File list box
     Element fileList = vbox({
         text("Current Directory: " + _fm.cwd.string()) | bold | color(Color::Yellow),
         separator(),

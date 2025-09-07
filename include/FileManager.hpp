@@ -64,7 +64,7 @@ class FileManager {
 
     enum class Mode {
         Normal,
-        Selection
+        Select
     };
 
     struct Undo {
@@ -86,6 +86,7 @@ class FileManager {
 
     fs::path cwd, promptPath;
     std::vector<Entry> entries;
+    fs::path selEntryPath;
     std::string promptInput, error;
     Component inputBox, promptContainer;
     std::set<fs::path> expandedDirs, selItems;
@@ -112,8 +113,9 @@ class FileManager {
 
     // Input handlers
     void handleEvent(Event, ScreenInteractive &);
+    void handleNormalEvent(Event, ScreenInteractive &);
+    void handleSelectEvent(Event, ScreenInteractive &);
     void handlePromptEvent(Event, ScreenInteractive &);
-    void handleMode(Mode, Event, ScreenInteractive &);
     bool handleTermCmd(TermCmds);
     void moveSelection(int delta, ScreenInteractive &);
     void goToParent();
@@ -125,6 +127,7 @@ class FileManager {
     void promptUser(Prompt);
     std::optional<Prompt> tryPaste();
     void undo();
+    void updateSelEntryPath();
 };
 
 #endif

@@ -91,6 +91,40 @@ inline bool changeDir(const fs::path &arg) {
     return false;
 }
 
+inline bool copyFileToClip(const std::string &utf8Path) {
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8Path.c_str(), -1, nullptr, 0);
+    if (wlen == 0) return false;
+    std::vector<wchar_t> wpath(wlen);
+    MultiByteToWideChar(CP_UTF8, 0, utf8Path.c_str(), -1, wpath.data(), wlen);
+
+    size_t bytesNeeded = sizeof(DROPFILES) + (wlen * sizeof(wchar_t));
+    HGLOBAL hGlobal = GlobalAlloc(GHND | GMEM_SHARE, bytesNeeded);
+    if (!hGlobal) return false;
+
+    DROPFILES *df = (DROPFILES *)GlobalLock(hGlobal);
+    df->pFiles = sizeof(DROPFILES);
+    df->pt.x = 0;
+    df->pt.y = 0;
+    df->fNC = FALSE;
+    df->fWide = TRUE;
+
+    memcpy((BYTE *)df + sizeof(DROPFILES), wpath.data(), wlen * sizeof(wchar_t));
+    GlobalUnlock(hGlobal);
+
+    if (!OpenClipboard(nullptr)) {
+        GlobalFree(hGlobal);
+        return false;
+    }
+    EmptyClipboard();
+    if (SetClipboardData(CF_HDROP, hGlobal) == nullptr) {
+        CloseClipboard();
+        GlobalFree(hGlobal);
+        return false;
+    }
+    CloseClipboard();
+    return true;
+}
+
 inline bool copyPathToClip(const std::string &utf8Path) {
     if (!OpenClipboard(nullptr)) { return false; }
     EmptyClipboard();
@@ -172,6 +206,10 @@ inline void deleteFilOrDir(const fs::path &p) {
         fs::remove(p);
 }
 
+inline void deleteFilOrDir(const std::set<fs::path> &paths) {
+    for (const auto &p : paths) { deleteFilOrDir(p); }
+}
+
 inline bool runFileFromTerm(const fs::path &path) {
     if (!fs::exists(path)) { return true; }
 
@@ -187,64 +225,31 @@ inline bool runFileFromTerm(const fs::path &path) {
     return true;
 }
 
-inline std::optional<fs::path> runFzf(const std::vector<fs::path> &entries, const fs::path &base) {
-    if (entries.empty()) { return std::nullopt; }
+inline std::optional<fs::path> runFzf(const fs::path &dir) {
+    if (!fs::exists(dir) || !fs::is_directory(dir)) return std::nullopt;
 
-    const std::string fzfInputFile = getAppDataDir() + "\\fzf_input.txt";
-    std::ofstream outFile(fzfInputFile);
-    if (!outFile) { return std::nullopt; }
+    std::string cmd = "cd /d \"" + dir.string() + "\" && fzf";
 
-    for (const auto &p : entries) {
-        std::error_code ec;
-        fs::path rel = fs::relative(p, base, ec);
-        if (ec) {
-            outFile << p.string() << "\n";
-        } else {
-            outFile << rel.string() << "\n";
-        }
-    }
-    outFile.close();
-
-    std::string cmd = "type \"" + fzfInputFile + "\" | fzf";
     FILE *pipe = _popen(cmd.c_str(), "r");
-    if (!pipe) {
-        fs::remove(fzfInputFile);
-        return std::nullopt;
-    }
+    if (!pipe) return std::nullopt;
 
-    char buffer[1024];
+    char buffer[4096];
     std::string selected;
     if (fgets(buffer, sizeof(buffer), pipe) != nullptr) { selected = buffer; }
 
     _pclose(pipe);
-    fs::remove(fzfInputFile);
+
+    while (!selected.empty() && (selected.back() == '\n' || selected.back() == '\r')) {
+        selected.pop_back();
+    }
 
     if (!selected.empty()) {
-        if (selected.back() == '\n') { selected.pop_back(); }
-        if (!selected.empty()) {
-            // join base + relative
-            return base / selected;
-        }
+        fs::path fullPath = fs::absolute(dir / selected);
+        return fullPath;
     }
 
     return std::nullopt;
 }
-
-inline std::optional<fs::path> runFzf(const fs::path &path) {
-    fs::path target = path;
-
-    if (!fs::exists(target) || !fs::is_directory(target)) {
-        target = target.parent_path();
-        if (target.empty() || !fs::exists(target)) return std::nullopt;
-    }
-
-    std::vector<fs::path> entries;
-    for (auto &p : fs::recursive_directory_iterator(target)) { entries.push_back(p.path()); }
-
-    return runFzf(entries, target);
-}
-
-namespace fs = std::filesystem;
 
 inline std::string formatHistoryPath(const fs::path &absPath, const fs::path &cwd) {
     try {
