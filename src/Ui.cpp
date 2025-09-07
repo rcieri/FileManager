@@ -61,8 +61,17 @@ Element UI::render(ScreenInteractive &screen) {
         vbox(rows) | flex | frame | borderRounded | bgcolor(Color::Black),
     });
 
-    Element main_view = hbox({fileList | flex}) | size(HEIGHT, EQUAL, screen.dimy());
+    Element modeLine = hbox({
+                           text(_fm.modeStr) | bold | color(Color::Green),
+                           filler(),
+                       }) |
+                       size(HEIGHT, EQUAL, 1) | bgcolor(Color::Black);
 
+    Element main_view = vbox({
+                            fileList | flex,
+                            modeLine,
+                        }) |
+                        size(HEIGHT, EQUAL, screen.dimy());
     return createOverlay(main_view);
 }
 
